@@ -7,6 +7,9 @@ from typing import Callable
 import orjson
 import torch
 from simple_parsing import ArgumentParser
+from datasets import Dataset
+from simple_parsing import ArgumentParser
+from sparsify.data import chunk_and_tokenize
 from torch import Tensor
 from transformers import (
     AutoModel,
@@ -19,7 +22,7 @@ from transformers import (
 
 from delphi.clients import Offline, OpenRouter
 from delphi.config import RunConfig
-from delphi.explainers import DefaultExplainer
+from delphi.explainers import ContrastiveExplainer, DefaultExplainer
 from delphi.latents import LatentCache, LatentDataset
 from delphi.latents.neighbours import NeighbourCalculator
 from delphi.log.result_analysis import log_results
@@ -27,6 +30,8 @@ from delphi.pipeline import Pipe, Pipeline, process_wrapper
 from delphi.scorers import DetectionScorer, FuzzingScorer
 from delphi.sparse_coders import load_hooks_sparse_coders, load_sparse_coders
 from delphi.utils import load_tokenized_data
+from delphi.sparse_coders import load_sparse_coders
+from delphi.semantic_index.index import build_or_load_index, load_index
 
 
 def load_artifacts(run_cfg: RunConfig):
@@ -96,10 +101,11 @@ def create_neighbours(
 
 async def process_cache(
     run_cfg: RunConfig,
+    base_path: Path,
     latents_path: Path,
     explanations_path: Path,
     scores_path: Path,
-    hookpoints: list[str],
+    nrh: list[str],
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     latent_range: Tensor | None,
 ):
@@ -119,17 +125,20 @@ async def process_cache(
         latent_dict = None
     else:
         latent_dict = {
-            hook: latent_range for hook in hookpoints
+            hook: latent_range for hook in nrh
         }  # The latent range to explain
 
     dataset = LatentDataset(
         raw_dir=str(latents_path),
         sampler_cfg=run_cfg.sampler_cfg,
         constructor_cfg=run_cfg.constructor_cfg,
-        modules=hookpoints,
+        modules=nrh,
         latents=latent_dict,
         tokenizer=tokenizer,
     )
+
+    if run_cfg.semantic_index:
+        index = load_index(base_path, run_cfg.cache_cfg)
 
     if run_cfg.explainer_provider == "offline":
         client = Offline(
@@ -165,13 +174,28 @@ async def process_cache(
             f.write(orjson.dumps(result.explanation))
         return result
 
-    explainer_pipe = process_wrapper(
-        DefaultExplainer(
+    if run_cfg.semantic_index:
+        explainer = ContrastiveExplainer(
+            client,
+            tokenizer=dataset.tokenizer,
+            index=index,
+            threshold=0.3,
+            verbose=run_cfg.verbose,
+        )
+        postprocess = None
+    else:
+        explainer = DefaultExplainer(
             client,
             threshold=0.3,
             verbose=run_cfg.verbose,
         ),
-        postprocess=explainer_postprocess,
+        postprocess= explainer_postprocess
+
+    explainer_pipe = Pipe(
+        process_wrapper(
+            explainer,
+            postprocess=postprocess,
+        ),
     )
 
     # Builds the record from result returned by the pipeline
@@ -225,11 +249,13 @@ def populate_cache(
     model: PreTrainedModel,
     hookpoint_to_sparse_encode: dict[str, Callable],
     latents_path: Path,
+    base_path: Path,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     transcode: bool,
 ):
     """
     Populates an on-disk cache in `latents_path` with SAE latent activations.
+    Optionally builds a semantic index of token sequences.
     """
     latents_path.mkdir(parents=True, exist_ok=True)
     cache_cfg = run_cfg.cache_cfg
@@ -242,6 +268,16 @@ def populate_cache(
         cache_cfg.dataset_column,
         run_cfg.seed,
     )
+    data = assert_type(Dataset, data)
+    data = data.shuffle(run_cfg.seed)
+
+    if run_cfg.semantic_index:
+        build_or_load_index(data, base_path, cfg)
+
+    data = chunk_and_tokenize(
+        data, tokenizer, max_seq_len=cfg.ctx_len, text_key=cfg.dataset_column
+    )
+    tokens = data["input_ids"]
 
     if run_cfg.filter_bos:
         if tokenizer.bos_token_id is None:
@@ -332,11 +368,15 @@ async def run(
         populate_cache(
             run_cfg,
             model,
-            nrh,
+            hookpoint_to_sparse_encode,
             latents_path,
+            base_path,
             tokenizer,
             transcode,
         )
+
+    if run_cfg.semantic_index:
+        load_index(base_path, run_cfg.cache_cfg)
 
     del model, hookpoint_to_sparse_encode
     if run_cfg.constructor_cfg.non_activating_source == "neighbours":
@@ -359,6 +399,7 @@ async def run(
     if nrh:
         await process_cache(
             run_cfg,
+            base_path,
             latents_path,
             explanations_path,
             scores_path,

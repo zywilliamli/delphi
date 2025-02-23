@@ -1,6 +1,8 @@
 #%%
 %cd ..
 #%%
+%load_ext autoreload
+%autoreload 2
 from sae_dashboard.sae_vis_data import SaeVisConfig, SaeVisData
 from sae_dashboard.feature_data import FeatureData
 from sae_dashboard.components import FeatureTablesData, LogitsHistogramData, ActsHistogramData
@@ -13,10 +15,10 @@ try:
 except ImportError:
     from more_itertools import chunked as batched
 from argparse import Namespace
-from delphi.config import ExperimentConfig, FeatureConfig
-from delphi.features import FeatureDataset, FeatureLoader
-from delphi.features.constructors import default_constructor
-from delphi.features.samplers import sample
+from delphi.config import ExperimentConfig, LatentConfig
+from delphi.latents import LatentDataset, LatentRecord
+from delphi.latents.constructors import constructor
+from delphi.latents.samplers import sampler
 from functools import partial
 import torch
 torch.set_grad_enabled(False)
@@ -28,33 +30,36 @@ import gc
 import re
 #%%
 args = Namespace(
-    module=".model.layers.16.router",
-    feature_options=FeatureConfig(),
-    features=100,
-    model="monet_cache_converted/850m"
+    module="model.layers.9",
+    latent_options=LatentConfig(),
+    latents=100,
+    model="sae_pkm/baseline",
 )
 module = args.module
-feature_cfg = args.feature_options
-n_features = args.features  
-start_feature = 0
+latent_cfg = args.latent_options
+n_latents = args.latents  
+start_latent = 0
 sae_model = args.model
-feature_dict = {f"{module}": torch.arange(start_feature,start_feature+n_features)}
-dataset = FeatureDataset(
+latent_dict = {f"{module}": torch.arange(start_latent,start_latent+n_latents)}
+kwargs = dict(
     raw_dir=f"results/{args.model}",
-    cfg=feature_cfg,
+    latent_cfg=latent_cfg,
     modules=[module],
-    features=feature_dict,
+    latents=latent_dict,
+    experiment_cfg=ExperimentConfig(),
 )
 
 
-def set_record_buffer(record, buffer_output):
-    record.buffer = buffer_output
-loader = FeatureLoader(dataset, constructor=set_record_buffer, sampler=lambda x: x, transform=lambda x: x)
+def set_record_buffer(record, *, latent_data):
+    record.buffer = latent_data.activation_data
+    return record
+loader = LatentDataset(**kwargs, constructor=set_record_buffer, sampler=lambda x: x)
 #%%
-cache_lm = AutoModelForCausalLM.from_pretrained(dataset.cache_config["model_name"], trust_remote_code=True, device_map="cpu")
+model_name = loader.cache_config["model_name"]
+cache_lm = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True, device_map="cpu")
 lm_head = cache_lm.lm_head
 #%%
-lm_config = AutoConfig.from_pretrained(dataset.cache_config["model_name"], trust_remote_code=True)
+lm_config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
 #%%
 if (router_match := re.match(r"\.model\.layers\.(\d+)\.router", args.module)):
     cache_lm
@@ -73,23 +78,22 @@ if (router_match := re.match(r"\.model\.layers\.(\d+)\.router", args.module)):
         b2 = torch.nn.functional.pad(b2, (lm_config.hidden_size // 2, 0))
         bias = (b1[:, None, :] + b2[None, :, :]).reshape(-1, lm_config.hidden_size)
         total_bias = total_bias + bias
-    feature_to_resid = total_bias
+    latent_to_resid = total_bias
 #%%
 del cache_lm
 gc.collect()
 #%%
-tokens = dataset.buffers[0].load()[3]
+tokens = loader.buffers[0].load()[-1]
 n_sequences, max_seq_len = tokens.shape
 #%%
 
 cfg = SaeVisConfig(
     hook_point=args.module,
-    minibatch_size_tokens=dataset.cache_config["ctx_len"],
+    minibatch_size_tokens=loader.cache_config["ctx_len"],
     features=[],
     # batch_size=dataset.cache_config["batch_size"],
 )
 layout = cfg.feature_centric_layout
-feature_data_dict = {}
 
 ranges_and_precisions = ASYMMETRIC_RANGES_AND_PRECISIONS
 quantiles = []
@@ -98,25 +102,20 @@ for r, p in ranges_and_precisions:
     step = 10**-p
     quantiles.extend(np.arange(start, end - 0.5 * step, step))
 quantiles_tensor = torch.tensor(quantiles, dtype=torch.float32)
-feature_stats = FeatureStatistics()
-# supposed_feature = 0
-for i, record in enumerate(tqdm(loader, total=args.features)):
-    # if record.buffer.locations[0, 2].item() > supposed_feature:
-    #     for _ in range(supposed_feature, record.buffer.locations[0, 2].item()):
-    #         feature_stats.update(FeatureStatistics(
-    #             max=[0],
-    #             frac_nonzero=[0],
-    #             skew=[0],
-    #             kurtosis=[0],
-    #             quantile_data=[quantiles_tensor.new_zeros(quantiles_tensor.shape).unsqueeze(0).tolist()],
-    #             quantiles=quantiles + [1.0],
-    #             ranges_and_precisions=ranges_and_precisions
-    #         ))
-    #         supposed_feature += 1
-    #     continue
+
+#%%
+latent_data_dict = {}
+
+latent_stats = FeatureStatistics()
+# supposed_latent = 0
+bar = tqdm(total=args.latents)
+i = -1
+async for record in loader:
+    i += 1
     # https://github.com/jbloomAus/SAEDashboard/blob/main/sae_dashboard/utils_fns.py
-    feature_id = record.buffer.locations[0, 2].item()
-    decoder_resid = feature_to_resid[feature_id]
+    latent_id = record.buffer.locations[0, 2].item()
+    # decoder_resid = latent_to_resid[latent_id]
+    decoder_resid = torch.randn(lm_config.hidden_size, device=record.buffer.activations.device)
     logit_vector = lm_head(decoder_resid)
     
     buffer = record.buffer
@@ -128,7 +127,7 @@ for i, record in enumerate(tqdm(loader, total=args.features)):
     quantile_data = torch.quantile(activations.float(), quantiles_tensor)
     skew = torch.mean((activations - activations.mean())**3) / (activations.std()**3)
     kurtosis = torch.mean((activations - activations.mean())**4) / (activations.std()**4)
-    feature_stats.update(FeatureStatistics(
+    latent_stats.update(FeatureStatistics(
         max=[_max.item()],
         frac_nonzero=[frac_nonzero.item()],
         skew=[skew.item()],
@@ -138,9 +137,9 @@ for i, record in enumerate(tqdm(loader, total=args.features)):
         ranges_and_precisions=ranges_and_precisions
     ))
         
-    feature_data = FeatureData()
-    feature_data.feature_tables_data = FeatureTablesData()
-    feature_data.logits_histogram_data = LogitsHistogramData.from_data(
+    latent_data = FeatureData()
+    latent_data.feature_tables_data = FeatureTablesData()
+    latent_data.logits_histogram_data = LogitsHistogramData.from_data(
         data=logit_vector.to(
             torch.float32
         ),  # need this otherwise fails on MPS
@@ -148,27 +147,30 @@ for i, record in enumerate(tqdm(loader, total=args.features)):
         tickmode="5 ticks",
         title=None,
     )
-    feature_data.acts_histogram_data = ActsHistogramData.from_data(
+    latent_data.acts_histogram_data = ActsHistogramData.from_data(
         data=nonzero_acts.to(torch.float32),
         n_bins=layout.act_hist_cfg.n_bins,
         tickmode="5 ticks",
         title=f"ACTIVATIONS<br>DENSITY = {frac_nonzero:.3%}",
     )
-    feature_data.logits_table_data = get_logits_table_data(
+    latent_data.logits_table_data = get_logits_table_data(
         logit_vector=logit_vector,
         n_rows=layout.logits_table_cfg.n_rows,  # type: ignore
     )
-    # feature_data.sequence_data = sequence_data_generator.get_sequences_data(
+    # latent_data.sequence_data = sequence_data_generator.get_sequences_data(
     #     feat_acts=masked_feat_acts,
     #     # feat_logits=logits[i],
     #     resid_post=torch.tensor([]),  # no longer used
-    #     # feature_resid_dir=feature_resid_dir[i],
+    #     # latent_resid_dir=latent_resid_dir[i],
     # )
-    feature_data_dict[feature_id] = feature_data
-    # supposed_feature += 1
+    latent_data_dict[latent_id] = latent_data
+    # supposed_latent += 1
+    bar.update(1)
+    bar.refresh()
+bar.close()
 
-feature_list = feature_dict[module].tolist()
-cfg.features = feature_list
+latent_list = latent_dict[module].tolist()
+cfg.features = latent_list
 #%%
 n_quantiles = 5
 experiment_cfg = ExperimentConfig(
@@ -177,17 +179,9 @@ experiment_cfg = ExperimentConfig(
     n_quantiles=n_quantiles,
     train_type="quantiles"
 )
-sampler = partial(sample,cfg=experiment_cfg)
-constructor=partial(
-    default_constructor,
-    # token_loader=lambda: dataset.load_tokens(),
-    token_loader=None,
-    n_random=experiment_cfg.n_random, 
-    ctx_len=experiment_cfg.example_ctx_len, 
-    max_examples=feature_cfg.max_examples
-)
-sequence_loader = FeatureLoader(dataset, constructor=constructor, sampler=sampler)
-for record in tqdm(sequence_loader):
+sequence_loader = LatentDataset(**kwargs | dict(experiment_cfg=experiment_cfg))
+bar = tqdm(total=args.latents)
+async for record in sequence_loader:
     groups = []
     for quantile_index, quantile_data in enumerate(
         list(batched(record.train, len(record.train) // n_quantiles))[::-1]):
@@ -213,22 +207,25 @@ for record in tqdm(sequence_loader):
             title=f"Quantile {quantile_index/n_quantiles:1%}-{(quantile_index+1)/n_quantiles:1%}",
             seq_data=group,
         ))
-    feature_data_dict[record.feature.feature_index].sequence_data = SequenceMultiGroupData(
+    latent_data_dict[record.latent.latent_index].sequence_data = SequenceMultiGroupData(
         seq_group_data=groups
     )
+    bar.update(1)
+    bar.refresh()
+bar.close()
 # %%
-feature_list = list(feature_data_dict.keys())
-tokenizer = dataset.tokenizer
+latent_list = list(latent_data_dict.keys())
+tokenizer = loader.tokenizer
 model = Namespace(
     tokenizer=tokenizer,
 )
 
 sae_vis_data = SaeVisData(
     cfg=cfg,
-    feature_data_dict=feature_data_dict,
-    feature_stats=feature_stats,
+    feature_data_dict=latent_data_dict,
+    feature_stats=latent_stats,
     model=model,
 )
 from sae_dashboard.data_writing_fns import save_feature_centric_vis
-save_feature_centric_vis(sae_vis_data=sae_vis_data, filename="results/feature_dashboard.html")
+save_feature_centric_vis(sae_vis_data=sae_vis_data, filename="results/latent_dashboard.html")
 # %%

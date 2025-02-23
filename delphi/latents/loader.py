@@ -128,6 +128,7 @@ class LatentDataset:
         tokenizer: Optional[PreTrainedTokenizer | PreTrainedTokenizerFast] = None,
         modules: Optional[list[str]] = None,
         latents: Optional[dict[str, torch.Tensor]] = None,
+        constructor = None, sampler = None
     ):
         """
         Initialize a LatentDataset.
@@ -146,6 +147,8 @@ class LatentDataset:
         self.buffers: list[TensorBuffer] = []
         self.all_data: dict[str, dict[int, ActivationData] | None] = {}
         self.tokens = None
+        self.constructor = constructor
+        self.sampler = sampler
 
         if modules is None:
             self.modules = os.listdir(raw_dir)
@@ -366,16 +369,28 @@ class LatentDataset:
                     str(latent_data.latent.latent_index)
                 ],
             )
-        record = constructor(
-            record=record,
-            activation_data=latent_data.activation_data,
-            n_not_active=self.experiment_config.n_non_activating,
-            constructor_type=self.experiment_config.non_activating_source,
-            ctx_len=self.experiment_config.example_ctx_len,
-            tokenizer=self.tokenizer,
-            max_examples=self.latent_config.max_examples,
-            tokens=self.tokens,
-            all_data=self.all_data[latent_data.module],
-        )
-        record = sampler(record, self.experiment_config)
+        if not self.constructor:
+            record = constructor(
+                record=record,
+                activation_data=latent_data.activation_data,
+                n_not_active=self.experiment_config.n_non_activating,
+                constructor_type=self.experiment_config.non_activating_source,
+                ctx_len=self.experiment_config.example_ctx_len,
+                tokenizer=self.tokenizer,
+                max_examples=self.latent_config.max_examples,
+                tokens=self.tokens,
+                all_data=self.all_data[latent_data.module],
+            )
+        else:
+            try:
+                record = self.constructor(record, latent_data=latent_data)
+            except TypeError as e:
+                if "latent_data" in str(e):
+                    record = self.constructor(record)
+                else:
+                    raise e
+        if not self.sampler:
+            record = sampler(record, self.experiment_config)
+        else:
+            record = self.sampler(record)
         return record

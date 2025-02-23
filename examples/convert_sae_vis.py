@@ -9,6 +9,7 @@ from sae_dashboard.components import FeatureTablesData, LogitsHistogramData, Act
 from sae_dashboard.components import SequenceMultiGroupData, SequenceGroupData, SequenceData
 from sae_dashboard.sae_vis_runner import SaeVisRunner
 from sae_dashboard.utils_fns import FeatureStatistics
+from sae_dashboard.components import DecoderWeightsDistribution
 from sae_dashboard.data_parsing_fns import get_logits_table_data
 try:
     from itertools import batched
@@ -34,6 +35,7 @@ args = Namespace(
     latent_options=LatentConfig(),
     latents=100,
     model="sae_pkm/baseline",
+    sae_path="../halutsae/sae-pkm/smollm/baseline/layers.9"
 )
 module = args.module
 latent_cfg = args.latent_options
@@ -57,10 +59,15 @@ loader = LatentDataset(**kwargs, constructor=set_record_buffer, sampler=lambda x
 #%%
 model_name = loader.cache_config["model_name"]
 cache_lm = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True, device_map="cpu")
-lm_head = cache_lm.lm_head
+#%%
+lm_head = torch.nn.Sequential(
+    cache_lm.model.norm,
+    cache_lm.lm_head
+)
 #%%
 lm_config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
 #%%
+from safetensors.torch import load_file
 if (router_match := re.match(r"\.model\.layers\.(\d+)\.router", args.module)):
     cache_lm
     # monet model
@@ -79,6 +86,12 @@ if (router_match := re.match(r"\.model\.layers\.(\d+)\.router", args.module)):
         bias = (b1[:, None, :] + b2[None, :, :]).reshape(-1, lm_config.hidden_size)
         total_bias = total_bias + bias
     latent_to_resid = total_bias
+if (transcoder_match := re.match(r"model\.layers\.(\d+)", args.module)):
+    cache_lm
+    layer = int(transcoder_match.group(1))
+    transcoder_weights = load_file(args.sae_path + "/sae.safetensors")
+    w_dec = transcoder_weights["W_dec"]
+    latent_to_resid = w_dec
 #%%
 del cache_lm
 gc.collect()
@@ -114,8 +127,7 @@ async for record in loader:
     i += 1
     # https://github.com/jbloomAus/SAEDashboard/blob/main/sae_dashboard/utils_fns.py
     latent_id = record.buffer.locations[0, 2].item()
-    # decoder_resid = latent_to_resid[latent_id]
-    decoder_resid = torch.randn(lm_config.hidden_size, device=record.buffer.activations.device)
+    decoder_resid = latent_to_resid[latent_id].to(record.buffer.activations.device)
     logit_vector = lm_head(decoder_resid)
     
     buffer = record.buffer
@@ -157,12 +169,11 @@ async for record in loader:
         logit_vector=logit_vector,
         n_rows=layout.logits_table_cfg.n_rows,  # type: ignore
     )
-    # latent_data.sequence_data = sequence_data_generator.get_sequences_data(
-    #     feat_acts=masked_feat_acts,
-    #     # feat_logits=logits[i],
-    #     resid_post=torch.tensor([]),  # no longer used
-    #     # latent_resid_dir=latent_resid_dir[i],
-    # )
+    latent_data.decoder_weights_data = (
+        DecoderWeightsDistribution(
+            len(decoder_resid), decoder_resid.tolist()
+        )
+    )
     latent_data_dict[latent_id] = latent_data
     # supposed_latent += 1
     bar.update(1)

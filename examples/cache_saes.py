@@ -99,20 +99,6 @@ def main(cfg: CacheConfig, args):
     )
     model = NNsight(model)
     model.tokenizer = AutoTokenizer.from_pretrained(model_name)
-    # model = LanguageModel(model_name, device_map="auto",
-    #                     #   dispatch=True,
-    #                       torch_dtype=torch.bfloat16,
-    #                       trust_remote_code=True
-    #                       )
-    
-    # submodule_dict, model = load_eai_autoencoders(
-    #     model,
-    #     config["layers"],
-    #     str(sae_dir.resolve()),
-    #     module="mlp" if transcode else "res",
-    #     randomize=False,
-    #     k=k
-    # )
     submodule_dict = {}
 
     device = "cuda:0"
@@ -141,7 +127,7 @@ def main(cfg: CacheConfig, args):
             hookpoint=hookpoint
         )
 
-        submodule_dict[hookpoint] = submodule
+        submodule_dict["." + hookpoint] = submodule.ae
 
     with model.edit("") as edited:
         for path, submodule in submodule_dict.items():
@@ -172,6 +158,7 @@ def main(cfg: CacheConfig, args):
     cache.run(10_000_000, tokens)
     cache_save_dir = f"results/sae_pkm/{name}"
     os.makedirs(cache_save_dir, exist_ok=True)
+    cache_save_dir = Path(cache_save_dir)
 
     cache.save_splits(
         n_splits=cfg.n_splits, 

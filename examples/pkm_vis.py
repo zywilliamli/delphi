@@ -21,14 +21,17 @@ for group_name, config_group in {
     # ("with_pkm_sae", "without_pkm_sae"),
     # ("with_pkm_transcoder", "without_pkm_transcoder"),
     # ("baseline", "ef64-k64", "pkm-x32")
+    "pkm-comparison": (
+        ("ef64-k64", "default"),
+    )
     # "pkm-32-neighbors-substitution": (
     #     ("pkm-x32", "default_neighbors_substitute_self"),
     #     ("pkm-x32", "default_neighbors_substitute_other")
     # ),
-    "pkm-32-substitution": (
-        ("pkm-x32", "default_substitute_self"),
-        ("pkm-x32", "default_substitute_other")
-    ),
+    # "pkm-32-substitution": (
+    #     ("pkm-x32", "default_substitute_self"),
+    #     ("pkm-x32", "default_substitute_other")
+    # ),
 }.items():
     for layer in range(24):
         fuzz_accs = {}

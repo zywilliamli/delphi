@@ -291,6 +291,7 @@ def non_redundant_hookpoints(
         ]
     if not non_redundant_hookpoints:
         print(f"Files found in {results_path}, skipping...")
+        return None
     return non_redundant_hookpoints
 
 async def run(
@@ -315,36 +316,42 @@ async def run(
     hookpoints, hookpoint_to_sparse_encode, model = load_artifacts(run_cfg)
     tokenizer = AutoTokenizer.from_pretrained(run_cfg.model, token=run_cfg.hf_token)
 
-    populate_cache(
-        run_cfg,
-        model,
-        non_redundant_hookpoints(hookpoint_to_sparse_encode, latents_path, "cache" in run_cfg.overwrite),
-        latents_path,
-        tokenizer,
-    )
+    nrh = non_redundant_hookpoints(hookpoint_to_sparse_encode, latents_path, "cache" in run_cfg.overwrite)
+    if nrh:
+        populate_cache(
+            run_cfg,
+            model,
+            nrh,
+            latents_path,
+            tokenizer,
+        )
 
     del model, hookpoint_to_sparse_encode
     if (
         run_cfg.constructor_cfg.non_activating_source == "neighbours"
     ):
-        create_neighbours(
-            run_cfg,
-            latents_path,
-            neighbours_path,
-            non_redundant_hookpoints(hookpoints, neighbours_path, "neighbours" in run_cfg.overwrite),
-        )
+        nrh = non_redundant_hookpoints(hookpoints, neighbours_path, "neighbours" in run_cfg.overwrite)
+        if nrh:
+            create_neighbours(
+                run_cfg,
+                latents_path,
+                neighbours_path,
+                nrh,
+            )
     else:
         print("Skipping neighbour creation")
 
-    await process_cache(
-        run_cfg,
-        latents_path,
-        explanations_path,
-        scores_path,
-        non_redundant_hookpoints(hookpoints, scores_path, "scores" in run_cfg.overwrite),
-        tokenizer,
-        latent_range,
-    )
+    nrh = non_redundant_hookpoints(hookpoints, scores_path, "scores" in run_cfg.overwrite)
+    if nrh:
+        await process_cache(
+            run_cfg,
+            latents_path,
+            explanations_path,
+            scores_path,
+            nrh,
+            tokenizer,
+            latent_range,
+        )
 
     if run_cfg.verbose:
         log_results(scores_path, visualize_path, run_cfg.hookpoints)

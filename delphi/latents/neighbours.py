@@ -227,6 +227,7 @@ class NeighbourCalculator:
                         "Batch size is too small to compute similarity matrix. "
                         "You don't have enough memory."
                     )
+            done = True
 
         # Compute Jaccard similarity
         def compute_jaccard(cooc_matrix):

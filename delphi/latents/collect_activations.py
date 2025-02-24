@@ -31,7 +31,7 @@ def collect_activations(
                 if isinstance(input, tuple):
                     activations[hookpoint] = input[0]
                 else:
-                    activations[hookpoint] = input.transpose(1, 2)
+                    activations[hookpoint] = input
             else:
                 if isinstance(output, tuple):
                     activations[hookpoint] = output[0]

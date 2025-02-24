@@ -106,9 +106,6 @@ class RunConfig(Serializable):
     hookpoints: list[str] = list_field()
     """list of model hookpoints to attach sparse models to."""
 
-    transcode: bool = False
-    """Whether to transcode the activations."""
-
     explainer_model: str = field(
         default="hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4",
     )

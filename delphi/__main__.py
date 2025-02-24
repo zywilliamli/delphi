@@ -319,7 +319,9 @@ async def run(
     hookpoints, hookpoint_to_sparse_encode, model = load_artifacts(run_cfg)
     tokenizer = AutoTokenizer.from_pretrained(run_cfg.model, token=run_cfg.hf_token)
 
-    nrh = non_redundant_hookpoints(hookpoint_to_sparse_encode, latents_path, "cache" in run_cfg.overwrite)
+    nrh = non_redundant_hookpoints(
+        hookpoint_to_sparse_encode, latents_path, "cache" in run_cfg.overwrite
+    )
     if nrh:
         populate_cache(
             run_cfg,
@@ -330,10 +332,10 @@ async def run(
         )
 
     del model, hookpoint_to_sparse_encode
-    if (
-        run_cfg.constructor_cfg.non_activating_source == "neighbours"
-    ):
-        nrh = non_redundant_hookpoints(hookpoints, neighbours_path, "neighbours" in run_cfg.overwrite)
+    if run_cfg.constructor_cfg.non_activating_source == "neighbours":
+        nrh = non_redundant_hookpoints(
+            hookpoints, neighbours_path, "neighbours" in run_cfg.overwrite
+        )
         if nrh:
             create_neighbours(
                 run_cfg,
@@ -344,7 +346,9 @@ async def run(
     else:
         print("Skipping neighbour creation")
 
-    nrh = non_redundant_hookpoints(hookpoints, scores_path, "scores" in run_cfg.overwrite)
+    nrh = non_redundant_hookpoints(
+        hookpoints, scores_path, "scores" in run_cfg.overwrite
+    )
     if nrh:
         await process_cache(
             run_cfg,

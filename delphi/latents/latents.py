@@ -143,7 +143,7 @@ class LatentRecord:
     explanation: str = ""
     """Explanation of the latent."""
 
-    extra_examples: list[ActivatingExample | NonActivatingExample] = field(
+    extra_examples: list[Example] = field(
         default_factory=list
     )
     """Extra examples that may be used for contrastive explanations."""

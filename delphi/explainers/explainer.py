@@ -39,7 +39,7 @@ class Explainer(ABC):
     """Additional keyword arguments for the generation client."""
 
     async def __call__(self, record: LatentRecord) -> ExplainerResult:
-        messages = self._build_prompt(record.train)
+        messages = self._build_prompt(record)
 
         response = await self.client.generate(
             messages, temperature=self.temperature, **self.generation_kwargs
@@ -114,7 +114,7 @@ class Explainer(ABC):
         return "Activations: " + acts
 
     @abstractmethod
-    def _build_prompt(self, examples: list[ActivatingExample]) -> list[dict]:
+    def _build_prompt(self, record: LatentRecord) -> list[dict]:
         pass
 
 

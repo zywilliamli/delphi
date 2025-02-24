@@ -128,6 +128,7 @@ def load_sparsify_hooks(
         hookpoint_to_sparse_encode[".".join(path_segments)] = partial(
             sae_dense_latents, sae=sparse_model
         )
+        # We only need to check if one of the sparse models is a transcoder
         if hasattr(sparse_model.cfg, "transcode"):
             if sparse_model.cfg.transcode:
                 transcode = True

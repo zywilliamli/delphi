@@ -1,7 +1,6 @@
 import asyncio
 import os
 from functools import partial
-from glob import glob
 from pathlib import Path
 from typing import Callable
 
@@ -269,8 +268,9 @@ def populate_cache(
 
 
 def non_redundant_hookpoints(
-    hookpoint_to_sparse_encode: dict[str, Callable] | list[str], results_path: Path,
-    overwrite: bool
+    hookpoint_to_sparse_encode: dict[str, Callable] | list[str],
+    results_path: Path,
+    overwrite: bool,
 ):
     """
     Returns a list of hookpoints that are not already in the cache.
@@ -281,17 +281,20 @@ def non_redundant_hookpoints(
     in_results_path = [x.name for x in results_path.glob("*")]
     if isinstance(hookpoint_to_sparse_encode, dict):
         non_redundant_hookpoints = {
-            k: v for k, v in hookpoint_to_sparse_encode.items()
+            k: v
+            for k, v in hookpoint_to_sparse_encode.items()
             if k not in in_results_path
         }
     else:
         non_redundant_hookpoints = [
-            hookpoint for hookpoint in hookpoint_to_sparse_encode
+            hookpoint
+            for hookpoint in hookpoint_to_sparse_encode
             if hookpoint not in in_results_path
         ]
     if not non_redundant_hookpoints:
         print(f"Files found in {results_path}, skipping...")
     return non_redundant_hookpoints
+
 
 async def run(
     run_cfg: RunConfig,
@@ -318,20 +321,22 @@ async def run(
     populate_cache(
         run_cfg,
         model,
-        non_redundant_hookpoints(hookpoint_to_sparse_encode, latents_path, "cache" in run_cfg.overwrite),
+        non_redundant_hookpoints(
+            hookpoint_to_sparse_encode, latents_path, "cache" in run_cfg.overwrite
+        ),
         latents_path,
         tokenizer,
     )
 
     del model, hookpoint_to_sparse_encode
-    if (
-        run_cfg.constructor_cfg.non_activating_source == "neighbours"
-    ):
+    if run_cfg.constructor_cfg.non_activating_source == "neighbours":
         create_neighbours(
             run_cfg,
             latents_path,
             neighbours_path,
-            non_redundant_hookpoints(hookpoints, neighbours_path, "neighbours" in run_cfg.overwrite),
+            non_redundant_hookpoints(
+                hookpoints, neighbours_path, "neighbours" in run_cfg.overwrite
+            ),
         )
     else:
         print("Skipping neighbour creation")
@@ -341,7 +346,9 @@ async def run(
         latents_path,
         explanations_path,
         scores_path,
-        non_redundant_hookpoints(hookpoints, scores_path, "scores" in run_cfg.overwrite),
+        non_redundant_hookpoints(
+            hookpoints, scores_path, "scores" in run_cfg.overwrite
+        ),
         tokenizer,
         latent_range,
     )

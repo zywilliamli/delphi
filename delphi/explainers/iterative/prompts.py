@@ -7,9 +7,10 @@ How important each word is for the behavior is listed after each example in pare
 It is possible that the whole context is important, or that the words surround the marked words are important, so pay attention to the whole text.
 
 Because you have been doing this for a while, you will be given also the previous explanations as well as some examples that were incorrectly identified by that explanation.
-Examples that are highlighted should be considered as positive examples, while the others should be considered as negative examples.
-You should take those into account to better refine your explanation.
+False negatives are examples that were incorrectly identified as not having the pattern, while false positives are examples that were incorrectly identified as having the pattern.
+By refining the explanation, you should address the false negatives and false positives.
 
+Guidelines:
 - If the examples are uninformative, you don't need to mention them.
 - Do not mention the marker tokens (<< >>) in your explanation.
 - Do not make lists of possible explanations. Keep your explanation short and concise.

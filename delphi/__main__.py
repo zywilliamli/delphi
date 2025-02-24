@@ -49,9 +49,13 @@ def load_artifacts(run_cfg: RunConfig):
         token=run_cfg.hf_token,
     )
 
-    hookpoint_to_sparse_encode = load_hooks_sparse_coders(model, run_cfg, compile=True)
+    hookpoint_to_sparse_encode, transcode = load_hooks_sparse_coders(
+        model,
+        run_cfg,
+        compile=True,
+    )
 
-    return run_cfg.hookpoints, hookpoint_to_sparse_encode, model
+    return run_cfg.hookpoints, hookpoint_to_sparse_encode, model, transcode
 
 
 def create_neighbours(
@@ -222,6 +226,7 @@ def populate_cache(
     hookpoint_to_sparse_encode: dict[str, Callable],
     latents_path: Path,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
+    transcode: bool,
 ):
     """
     Populates an on-disk cache in `latents_path` with SAE latent activations.
@@ -254,6 +259,7 @@ def populate_cache(
         model,
         hookpoint_to_sparse_encode,
         batch_size=cache_cfg.batch_size,
+        transcode=transcode,
     )
     cache.run(cache_cfg.n_tokens, tokens)
 
@@ -316,7 +322,7 @@ async def run(
 
     latent_range = torch.arange(run_cfg.max_latents) if run_cfg.max_latents else None
 
-    hookpoints, hookpoint_to_sparse_encode, model = load_artifacts(run_cfg)
+    hookpoints, hookpoint_to_sparse_encode, model, transcode = load_artifacts(run_cfg)
     tokenizer = AutoTokenizer.from_pretrained(run_cfg.model, token=run_cfg.hf_token)
 
     nrh = non_redundant_hookpoints(
@@ -329,6 +335,7 @@ async def run(
             nrh,
             latents_path,
             tokenizer,
+            transcode,
         )
 
     del model, hookpoint_to_sparse_encode

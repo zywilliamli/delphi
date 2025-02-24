@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 import torch
+import time
 
 from delphi.latents import (
     ActivatingExample,
@@ -35,7 +36,7 @@ class IterativeExplainer(Explainer):
         for i, example in enumerate(examples):
             str_toks = example.str_tokens
             activations = example.activations.tolist()
-            highlighted_examples.append(self._highlight(str_toks, activations))
+            highlighted_examples.append("Example " + str(i) + ": \n" + self._highlight(str_toks, activations))
 
             if show_activations:
                 assert (
@@ -106,7 +107,7 @@ class HillClimbing:
     explainer: IterativeExplainer
     """Explainer to use for explanation generation."""
 
-    n_loops: int = 5
+    n_loops: int = 1
     """Number of loops to run the explanation generation."""
 
     def _compute_score(self, results: list[list[ClassifierOutput]]) -> float:
@@ -151,7 +152,9 @@ class HillClimbing:
                             activations=torch.tensor(sample.activations),
                             str_tokens=sample.str_tokens,
                         )
-                    wrong_examples.append(new_example)
+                    # Check if there's no existing example with same str_tokens
+                    if not any(ex.str_tokens == new_example.str_tokens for ex in wrong_examples):
+                        wrong_examples.append(new_example)
         return wrong_examples
 
     async def __call__(self, record: LatentRecord) -> list[ScorerResult] | None:
@@ -165,14 +168,17 @@ class HillClimbing:
         random.shuffle(non_activating_examples)
 
         first_generation_examples = train_examples
-        held_out_set_size = len(record.test) // 3
+        held_out_set_size = max(50, len(record.test) // 3)
         held_out_activating_examples = activating_examples[:held_out_set_size]
         held_out_non_activating_examples = non_activating_examples[:held_out_set_size]
         train_test_activating_examples = activating_examples[held_out_set_size:]
         train_test_non_activating_examples = non_activating_examples[held_out_set_size:]
 
+        start_time = time.time()
         first_explanation = await self.explainer(record)
         record.explanation = first_explanation.explanation
+        end_time = time.time()
+        print(f"Time taken for first explanation: {end_time - start_time} seconds")
 
         print("----- First explanation ------")
         print(first_explanation.explanation)
@@ -188,15 +194,20 @@ class HillClimbing:
             explanation=first_explanation.explanation,
         )
         results = []
+        scores = []
+        start_time = time.time()
         for scorer in self.scorers:
             result = await scorer(test_record)
-            results.append(result.score)
-        print("----- Holdout score ------")
-        holdout_score = self._compute_score(results)
+            results.append(result)
+            scores.append(result.score)
+        end_time = time.time()
+        print(f"Time taken for holdout score: {end_time - start_time} seconds")
+        #print("----- Holdout score ------")
+        holdout_score = self._compute_score(scores)
 
-        scores = [results]
+       
         for i in range(self.n_loops):
-            print(f"----- Loop {i} ------")
+            #print(f"----- Loop {i} ------")
 
             random.shuffle(train_test_non_activating_examples)
             random.shuffle(train_test_activating_examples)
@@ -204,40 +215,53 @@ class HillClimbing:
             new_record = LatentRecord(
                 latent=record.latent,
                 train=first_generation_examples,
-                not_active=train_test_non_activating_examples[:held_out_set_size],
-                test=train_test_activating_examples[:held_out_set_size],
+                not_active=train_test_non_activating_examples[:15],
+                test=train_test_activating_examples[:15],
                 explanation=first_explanation.explanation,
             )
-            results = []
+            scores = []
+            start_time = time.time()
             for scorer in self.scorers:
                 result = await scorer(new_record)
-                results.append(result.score)
-            print("----- Train score ------")
-            _ = self._compute_score(results)
+                scores.append(result.score)
+            end_time = time.time()
+            print(f"Time taken for train score: {end_time - start_time} seconds")
+            #print("----- Train score ------")
+            _ = self._compute_score(scores)
             # get the wrong examples
-            wrong_examples = self._get_wrong_examples(results)
+            wrong_examples = self._get_wrong_examples(scores)
             # update the record
             record.extra_examples.extend(wrong_examples)
             # update the explanation
+            start_time = time.time()
             new_explanation = await self.explainer(record)
+            end_time = time.time()
+            print(f"Time taken for new explanation: {end_time - start_time} seconds")
             if new_explanation.explanation == "Explanation could not be parsed.":
                 print("Error generating explanation")
                 pass  # we do not update the explanation
 
-            print("----- New explanation ------")
-            print(new_explanation.explanation)
+            #print("----- New explanation ------")
+            #print(new_explanation.explanation)
             # compute the score in the held out set
             test_record.explanation = new_explanation.explanation
-            results = []
+            scores = []
+            start_time = time.time()
             for scorer in self.scorers:
                 result = await scorer(test_record)
-                results.append(result.score)
-            print("----- Holdout score ------")
-            new_holdout_score = self._compute_score(results)
-            scores.append(results)
-            if new_holdout_score > holdout_score:
-                holdout_score = new_holdout_score
-                record.explanation = new_explanation.explanation
-                first_explanation = new_explanation
-
-        return scores
+                scores.append(result.score)
+                results.append(result)
+            end_time = time.time()
+            print(f"Time taken for holdout score: {end_time - start_time} seconds")
+            #print("----- Holdout score ------")
+            final_score = self._compute_score(scores)
+            record.explanation = new_explanation.explanation
+            first_explanation = new_explanation
+            #if new_holdout_score > holdout_score:
+            #    holdout_score = new_holdout_score
+            #    record.explanation = new_explanation.explanation
+            #    first_explanation = new_explanation
+        print("Initial score: ", holdout_score)
+        print("Last explanation: ", record.explanation)
+        print("Final score: ", final_score)
+        return results

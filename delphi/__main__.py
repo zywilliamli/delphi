@@ -1,7 +1,6 @@
 import asyncio
 import os
 from functools import partial
-from glob import glob
 from pathlib import Path
 from typing import Callable
 
@@ -268,6 +267,36 @@ def populate_cache(
     cache.save_config(save_dir=latents_path, cfg=cache_cfg, model_name=run_cfg.model)
 
 
+def non_redundant_hookpoints(
+    hookpoint_to_sparse_encode: dict[str, Callable] | list[str],
+    results_path: Path,
+    overwrite: bool,
+):
+    """
+    Returns a list of hookpoints that are not already in the cache.
+    """
+    if overwrite:
+        print("Overwriting results from", results_path)
+        return hookpoint_to_sparse_encode
+    in_results_path = [x.name for x in results_path.glob("*")]
+    if isinstance(hookpoint_to_sparse_encode, dict):
+        non_redundant_hookpoints = {
+            k: v
+            for k, v in hookpoint_to_sparse_encode.items()
+            if k not in in_results_path
+        }
+    else:
+        non_redundant_hookpoints = [
+            hookpoint
+            for hookpoint in hookpoint_to_sparse_encode
+            if hookpoint not in in_results_path
+        ]
+    if not non_redundant_hookpoints:
+        print(f"Files found in {results_path}, skipping...")
+        return None
+    return non_redundant_hookpoints
+
+
 async def run(
     run_cfg: RunConfig,
 ):
@@ -290,50 +319,46 @@ async def run(
     hookpoints, hookpoint_to_sparse_encode, model = load_artifacts(run_cfg)
     tokenizer = AutoTokenizer.from_pretrained(run_cfg.model, token=run_cfg.hf_token)
 
-    if (
-        not glob(str(latents_path / ".*")) + glob(str(latents_path / "*"))
-        or "cache" in run_cfg.overwrite
-    ):
+    nrh = non_redundant_hookpoints(
+        hookpoint_to_sparse_encode, latents_path, "cache" in run_cfg.overwrite
+    )
+    if nrh:
         populate_cache(
             run_cfg,
             model,
-            hookpoint_to_sparse_encode,
+            nrh,
             latents_path,
             tokenizer,
         )
-    else:
-        print(f"Files found in {latents_path}, skipping cache population...")
 
     del model, hookpoint_to_sparse_encode
-    if (
-        run_cfg.constructor_cfg.non_activating_source == "neighbours"
-        and not glob(str(neighbours_path / ".*")) + glob(str(neighbours_path / "*"))
-        or "neighbours" in run_cfg.overwrite
-    ):
-        create_neighbours(
-            run_cfg,
-            latents_path,
-            neighbours_path,
-            hookpoints,
+    if run_cfg.constructor_cfg.non_activating_source == "neighbours":
+        nrh = non_redundant_hookpoints(
+            hookpoints, neighbours_path, "neighbours" in run_cfg.overwrite
         )
+        if nrh:
+            create_neighbours(
+                run_cfg,
+                latents_path,
+                neighbours_path,
+                nrh,
+            )
     else:
-        print(f"Files found in {neighbours_path}, skipping...")
+        print("Skipping neighbour creation")
 
-    if (
-        not glob(str(scores_path / ".*")) + glob(str(scores_path / "*"))
-        or "scores" in run_cfg.overwrite
-    ):
+    nrh = non_redundant_hookpoints(
+        hookpoints, scores_path, "scores" in run_cfg.overwrite
+    )
+    if nrh:
         await process_cache(
             run_cfg,
             latents_path,
             explanations_path,
             scores_path,
-            hookpoints,
+            nrh,
             tokenizer,
             latent_range,
         )
-    else:
-        print(f"Files found in {scores_path}, skipping...")
 
     if run_cfg.verbose:
         log_results(scores_path, visualize_path, run_cfg.hookpoints)

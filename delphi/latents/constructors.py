@@ -1,36 +1,23 @@
-from typing import Literal, Optional
+from typing import Optional
 
 import torch
 from jaxtyping import Float
 from torch import Tensor
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
-from .latents import ActivatingExample, LatentRecord, NonActivatingExample
-from .loader import ActivationData
-
-
-def prepare_activating_examples(
-    tokens: Float[Tensor, "examples ctx_len"],
-    activations: Float[Tensor, "examples ctx_len"],
-) -> list[ActivatingExample]:
-    """
-    Prepare a list of examples from input tokens and activations.
-
-    Args:
-        tokens: Tokenized input sequences.
-        activations: Activation values for the input sequences.
-
-    Returns:
-        list[Example]: A list of prepared examples.
-    """
-    return [
-        ActivatingExample(tokens=toks, activations=acts, normalized_activations=None)
-        for toks, acts in zip(tokens, activations)
-    ]
+from ..config import ConstructorConfig
+from .latents import (
+    ActivatingExample,
+    ActivationData,
+    LatentRecord,
+    NonActivatingExample,
+)
 
 
 def prepare_non_activating_examples(
     tokens: Float[Tensor, "examples ctx_len"],
     distance: float,
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
 ) -> list[NonActivatingExample]:
     """
     Prepare a list of non-activating examples from input tokens and distance.
@@ -45,6 +32,7 @@ def prepare_non_activating_examples(
             activations=torch.zeros_like(toks),
             normalized_activations=None,
             distance=distance,
+            str_tokens=tokenizer.batch_decode(toks),
         )
         for toks in tokens
     ]
@@ -124,23 +112,27 @@ def pool_max_activation_windows(
 def constructor(
     record: LatentRecord,
     activation_data: ActivationData,
-    n_not_active: int,
-    max_examples: int,
-    ctx_len: int,
-    constructor_type: Literal["random", "neighbours"],
+    constructor_cfg: ConstructorConfig,
     tokens: Float[Tensor, "batch seq"],
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     all_data: Optional[dict[int, ActivationData]] = None,
-):
-    cache_token_length = tokens.shape[1]
+    seed: int = 42,
+) -> LatentRecord | None:
+    cache_ctx_len = tokens.shape[1]
+    example_ctx_len = constructor_cfg.example_ctx_len
+    source_non_activating = constructor_cfg.non_activating_source
+    n_not_active = constructor_cfg.n_non_activating
+    max_examples = constructor_cfg.max_examples
+    min_examples = constructor_cfg.min_examples
 
     # Get all positions where the latent is active
     flat_indices = (
-        activation_data.locations[:, 0] * cache_token_length
+        activation_data.locations[:, 0] * cache_ctx_len
         + activation_data.locations[:, 1]
     )
-    ctx_indices = flat_indices // ctx_len
-    index_within_ctx = flat_indices % ctx_len
-    reshaped_tokens = tokens.reshape(-1, ctx_len)
+    ctx_indices = flat_indices // example_ctx_len
+    index_within_ctx = flat_indices % example_ctx_len
+    reshaped_tokens = tokens.reshape(-1, example_ctx_len)
     n_windows = reshaped_tokens.shape[0]
 
     unique_batch_pos = ctx_indices.unique()
@@ -157,29 +149,48 @@ def constructor(
         tokens=reshaped_tokens,
         ctx_indices=ctx_indices,
         index_within_ctx=index_within_ctx,
-        ctx_len=ctx_len,
+        ctx_len=example_ctx_len,
         max_examples=max_examples,
     )
-    record.examples = prepare_activating_examples(token_windows, act_windows)
+    # TODO: We might want to do this in the sampler
+    # we are tokenizing examples that are not going to be used
+    record.examples = [
+        ActivatingExample(
+            tokens=toks,
+            activations=acts,
+            normalized_activations=None,
+            str_tokens=tokenizer.batch_decode(toks),
+        )
+        for toks, acts in zip(token_windows, act_windows)
+    ]
 
-    if constructor_type == "random":
+    if len(record.examples) < min_examples:
+        # Not enough examples to explain the latent
+        return None
+
+    if source_non_activating == "random":
         # Add random non-activating examples to the record in place
-        random_non_activating_windows(
-            record,
+        non_activating_examples = random_non_activating_windows(
             available_indices=non_active_indices,
             reshaped_tokens=reshaped_tokens,
             n_not_active=n_not_active,
+            seed=seed,
+            tokenizer=tokenizer,
         )
-    elif constructor_type == "neighbours":
+    elif source_non_activating == "neighbours":
         assert all_data is not None, "All data is required for neighbour constructor"
-        neighbour_non_activation_windows(
+        non_activating_examples = neighbour_non_activation_windows(
             record,
             not_active_mask=mask,
             tokens=tokens,
             all_data=all_data,
-            ctx_len=ctx_len,
+            ctx_len=example_ctx_len,
             n_not_active=n_not_active,
+            seed=seed,
+            tokenizer=tokenizer,
         )
+    record.not_active = non_activating_examples
+    return record
 
 
 def neighbour_non_activation_windows(
@@ -189,6 +200,8 @@ def neighbour_non_activation_windows(
     all_data: dict[int, ActivationData],
     ctx_len: int,
     n_not_active: int,
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
+    seed: int = 42,
 ):
     """
     Generate random activation windows and update the latent record.
@@ -199,16 +212,17 @@ def neighbour_non_activation_windows(
         tokens (TensorType["batch", "seq"]): The input tokens.
         all_data (AllData): The all data containing activations and locations.
         ctx_len (int): The context length.
-        n_random (int): The number of random examples to generate.
+        n_not_active (int): The number of non-activating examples per latent.
+        tokenizer (PreTrainedTokenizer | PreTrainedTokenizerFast): The tokenizer.
+        seed (int): The random seed.
     """
-    torch.manual_seed(22)
+    torch.manual_seed(seed)
     if n_not_active == 0:
-        record.not_active = []
-        return
+        return []
 
     assert (
         record.neighbours is not None
-    ), "Neighbours are not set, add them via a transform"
+    ), "Neighbours are not set, please precompute them"
 
     cache_token_length = tokens.shape[1]
     reshaped_tokens = tokens.reshape(-1, ctx_len)
@@ -224,7 +238,6 @@ def neighbour_non_activation_windows(
             break
         # get the locations of the neighbour
         if neighbour.latent_index not in all_data:
-            print(f"Neighbour {neighbour.latent_index} not found in all_data")
             continue
         locations = all_data[neighbour.latent_index].locations
         activations = all_data[neighbour.latent_index].activations
@@ -249,7 +262,6 @@ def neighbour_non_activation_windows(
         activations = activations[mask_ctx]
         # If there are no available indices, skip this neighbour
         if activations.numel() == 0:
-            print(f"No available indices for neighbour {neighbour.latent_index}")
             continue
         token_windows, _ = pool_max_activation_windows(
             activations=activations,
@@ -263,20 +275,23 @@ def neighbour_non_activation_windows(
         # which will be the most active examples
         examples_used = len(token_windows)
         all_examples.extend(
-            prepare_non_activating_examples(token_windows, neighbour.distance)
+            prepare_non_activating_examples(
+                token_windows, neighbour.distance, tokenizer
+            )
         )
         number_examples += examples_used
     if len(all_examples) == 0:
         print("No examples found")
-    record.not_active = all_examples
+    return all_examples
 
 
 def random_non_activating_windows(
-    record: LatentRecord,
     available_indices: Float[Tensor, "windows"],
     reshaped_tokens: Float[Tensor, "windows ctx_len"],
     n_not_active: int,
-):
+    tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
+    seed: int = 42,
+) -> list[NonActivatingExample]:
     """
     Generate random non-activating sequence windows and update the latent record.
 
@@ -288,17 +303,15 @@ def random_non_activating_windows(
         to the context length.
         n_not_active (int): The number of non activating examples to generate.
     """
-    torch.manual_seed(22)
+    torch.manual_seed(seed)
     if n_not_active == 0:
-        record.not_active = []
-        return
+        return []
 
     # If this happens it means that the latent is active in every window,
     # so it is a bad latent
     if available_indices.numel() < n_not_active:
         print("No available randomly sampled non-activating sequences")
-        record.not_active = []
-        return
+        return []
     else:
         random_indices = torch.randint(
             0, available_indices.shape[0], size=(n_not_active,)
@@ -307,7 +320,8 @@ def random_non_activating_windows(
 
     toks = reshaped_tokens[selected_indices]
 
-    record.not_active = prepare_non_activating_examples(
+    return prepare_non_activating_examples(
         toks,
         -1.0,
+        tokenizer,
     )

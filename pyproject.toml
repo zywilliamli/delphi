@@ -22,7 +22,10 @@ dependencies = [
     "flask",
     "vllm",
     "aiofiles",
-    "sentence_transformers"
+    "sentence_transformers",
+    "kaleido==0.2.1",
+    "plotly==5.0.0rc2",
+    "anyio>=4.8.0"
 ]
 
 [project.optional-dependencies]

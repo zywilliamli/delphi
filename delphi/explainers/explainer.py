@@ -3,10 +3,12 @@ import os
 import random
 import re
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from typing import NamedTuple
 
 import aiofiles
 
+from ..clients.client import Client
 from ..latents.latents import ActivatingExample, LatentRecord
 from ..logger import logger
 
@@ -19,30 +21,22 @@ class ExplainerResult(NamedTuple):
     """Generated explanation for latent."""
 
 
+@dataclass
 class Explainer(ABC):
     """
     Abstract base class for explainers.
     """
 
-    def __init__(
-        self,
-        client,
-        tokenizer,
-        verbose: bool = False,
-        activations: bool = False,
-        cot: bool = False,
-        threshold: float = 0.6,
-        temperature: float = 0.0,
-        **generation_kwargs,
-    ):
-        self.client = client
-        self.tokenizer = tokenizer
-        self.verbose = verbose
-        self.activations = activations
-        self.cot = cot
-        self.threshold = threshold
-        self.temperature = temperature
-        self.generation_kwargs = generation_kwargs
+    client: Client
+    """Client to use for explanation generation. """
+    verbose: bool = False
+    """Whether to print verbose output."""
+    threshold: float = 0.3
+    """The activation threshold to select tokens to highlight."""
+    temperature: float = 0.0
+    """The temperature for explanation generation."""
+    generation_kwargs: dict = field(default_factory=dict)
+    """Additional keyword arguments for the generation client."""
 
     async def __call__(self, record: LatentRecord) -> ExplainerResult:
         messages = self._build_prompt(record.train)

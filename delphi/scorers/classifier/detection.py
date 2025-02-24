@@ -1,5 +1,3 @@
-from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
-
 from ...clients.client import Client
 from ...latents import LatentRecord
 from .classifier import Classifier
@@ -13,7 +11,6 @@ class DetectionScorer(Classifier):
     def __init__(
         self,
         client: Client,
-        tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
         verbose: bool = False,
         n_examples_shown: int = 1,
         log_prob: bool = False,
@@ -35,7 +32,6 @@ class DetectionScorer(Classifier):
         """
         super().__init__(
             client=client,
-            tokenizer=tokenizer,
             verbose=verbose,
             n_examples_shown=n_examples_shown,
             log_prob=log_prob,
@@ -51,11 +47,9 @@ class DetectionScorer(Classifier):
         Prepare and shuffle a list of samples for classification.
         """
 
-        # check if not_active is a list of lists or a list of examples
         if len(record.not_active) > 0:
             samples = examples_to_samples(
                 record.not_active,
-                tokenizer=self.tokenizer,
             )
 
         else:
@@ -64,7 +58,6 @@ class DetectionScorer(Classifier):
         samples.extend(
             examples_to_samples(
                 record.test,
-                tokenizer=self.tokenizer,
             )
         )
 

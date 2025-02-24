@@ -6,7 +6,7 @@ from simple_parsing import Serializable, field, list_field
 
 
 @dataclass
-class ExperimentConfig(Serializable):
+class SamplerConfig(Serializable):
     n_examples_train: int = 40
     """Number of examples to sample for latent explanation generation."""
 
@@ -16,18 +16,30 @@ class ExperimentConfig(Serializable):
     n_quantiles: int = 10
     """Number of latent activation quantiles to sample."""
 
-    example_ctx_len: int = 32
-    """Length of each sampled example sequence. Longer sequences
-    reduce detection scoring performance in weak models."""
-
-    n_non_activating: int = 50
-    """Number of non-activating examples to sample."""
-
     train_type: Literal["top", "random", "quantiles"] = "quantiles"
     """Type of sampler to use for latent explanation generation."""
 
-    test_type: Literal["quantiles", "activation"] = "quantiles"
+    test_type: Literal["quantiles"] = "quantiles"
     """Type of sampler to use for latent explanation testing."""
+
+
+@dataclass
+class ConstructorConfig(Serializable):
+    example_ctx_len: int = 32
+    """Length of each sampled example sequence. Longer sequences
+    reduce detection scoring performance in weak models.
+    Has to be a multiple of the cache context length."""
+
+    min_examples: int = 200
+    """Minimum number of activating examples to generate for a single latent.
+    If the number of examples is less than this, the
+    latent will not be explained and scored."""
+
+    max_examples: int = 10_000
+    """Maximum number of activating examples to generate for a single latent."""
+
+    n_non_activating: int = 50
+    """Number of non-activating examples to be constructed."""
 
     non_activating_source: Literal["random", "neighbours"] = "random"
     """Source of non-activating examples. Random uses non-activating contexts
@@ -35,16 +47,10 @@ class ExperimentConfig(Serializable):
     from pre-computed latent neighbours. They are still non-activating but
     have a higher chance of being similar to the activating examples."""
 
-
-@dataclass
-class LatentConfig(Serializable):
-    min_examples: int = 200
-    """Minimum number of examples to generate for a single latent.
-    If the number of activating examples is less than this, the
-    latent will not be explained and scored."""
-
-    max_examples: int = 10_000
-    """Maximum number of examples to generate for a single latent."""
+    neighbours_type: Literal[
+        "co-occurrence", "decoder_similarity", "encoder_similarity"
+    ] = "co-occurrence"
+    """Type of neighbours to use. Only used if non_activating_source is 'neighbours'."""
 
 
 @dataclass
@@ -64,8 +70,9 @@ class CacheConfig(Serializable):
     batch_size: int = 32
     """Number of sequences to process in a batch."""
 
-    ctx_len: int = 256
-    """Context length of the autoencoder. Each batch is shape (batch_size, ctx_len)."""
+    cache_ctx_len: int = 256
+    """Context length for caching latent activations.
+    Each batch is shape (batch_size, ctx_len)."""
 
     n_tokens: int = 10_000_000
     """Number of tokens to cache."""
@@ -75,7 +82,13 @@ class CacheConfig(Serializable):
 
 
 @dataclass
-class RunConfig:
+class RunConfig(Serializable):
+    cache_cfg: CacheConfig
+
+    constructor_cfg: ConstructorConfig
+
+    sampler_cfg: SamplerConfig
+
     model: str = field(
         default="meta-llama/Meta-Llama-3-8B",
         positional=True,
@@ -151,6 +164,9 @@ class RunConfig:
     scoring speed but can leak information to the fuzzing and detection scorer,
     as well as increasing the scorer LLM task difficulty."""
 
-    overwrite: list[Literal["cache", "neighbours", "scores"]] = list_field()
+    overwrite: list[Literal["cache", "neighbours", "scores"]] = list_field(
+        choices=["cache", "neighbours", "scores"]
+    )
+
     """List of run stages to recompute. This is a debugging tool
     and may be removed in the future."""

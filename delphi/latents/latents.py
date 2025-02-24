@@ -1,11 +1,60 @@
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import blobfile as bf
 import orjson
 from jaxtyping import Float
 from torch import Tensor
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
+
+
+@dataclass
+class Latent:
+    """
+    A latent extracted from a model's activations.
+    """
+
+    module_name: str
+    """The module name associated with the latent."""
+
+    latent_index: int
+    """The index of the latent within the module."""
+
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the latent.
+
+        Returns:
+            str: A string representation of the latent.
+        """
+        return f"{self.module_name}_latent{self.latent_index}"
+
+
+class ActivationData(NamedTuple):
+    """
+    Represents the activation data for a latent.
+    """
+
+    locations: Float[Tensor, "n_examples 2"]
+    """Tensor of latent locations."""
+
+    activations: Float[Tensor, "n_examples"]
+    """Tensor of latent activations."""
+
+
+class LatentData(NamedTuple):
+    """
+    Represents the output of a TensorBuffer.
+    """
+
+    latent: Latent
+    """The latent associated with this output."""
+
+    module: str
+    """The module associated with this output."""
+
+    activation_data: ActivationData
+    """The activation data for this latent."""
 
 
 @dataclass
@@ -25,6 +74,9 @@ class Example:
 
     activations: Float[Tensor, "ctx_len"]
     """Activation values for the input sequence."""
+
+    str_tokens: list[str]
+    """Tokenized input sequence as strings."""
 
     normalized_activations: Optional[Float[Tensor, "ctx_len"]] = None
     """Activations quantized to integers in [0, 10]."""
@@ -61,28 +113,6 @@ class NonActivatingExample(Example):
     The distance from the neighbouring latent.
     Defaults to -1.0 if not using neighbours.
     """
-
-
-@dataclass
-class Latent:
-    """
-    A latent extracted from a model's activations.
-    """
-
-    module_name: str
-    """The module name associated with the latent."""
-
-    latent_index: int
-    """The index of the latent within the module."""
-
-    def __repr__(self) -> str:
-        """
-        Return a string representation of the latent.
-
-        Returns:
-            str: A string representation of the latent.
-        """
-        return f"{self.module_name}_latent{self.latent_index}"
 
 
 @dataclass
@@ -147,6 +177,18 @@ class LatentRecord:
         serializable.pop("latent")
         with bf.BlobFile(path, "wb") as f:
             f.write(orjson.dumps(serializable))
+
+    def set_neighbours(
+        self,
+        neighbours: list[tuple[float, int]],
+    ):
+        """
+        Set the neighbours for the latent record.
+        """
+        self.neighbours = [
+            Neighbour(distance=neighbour[0], latent_index=neighbour[1])
+            for neighbour in neighbours
+        ]
 
     def display(
         self,

@@ -3,48 +3,23 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, NamedTuple, Optional
+from typing import Optional
 
 import numpy as np
 import torch
 from jaxtyping import Float
 from safetensors.numpy import load_file
 from torch import Tensor
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, PreTrainedTokenizer, PreTrainedTokenizerFast
 
 from delphi.utils import (
     load_tokenized_data,
 )
 
-from ..config import LatentConfig
-from .latents import Latent, LatentRecord
-
-
-class ActivationData(NamedTuple):
-    """
-    Represents the activation data for a latent.
-    """
-
-    locations: Float[Tensor, "n_examples 2"]
-    """Tensor of latent locations."""
-
-    activations: Float[Tensor, "n_examples"]
-    """Tensor of latent activations."""
-
-
-class LatentData(NamedTuple):
-    """
-    Represents the output of a TensorBuffer.
-    """
-
-    latent: Latent
-    """The latent associated with this output."""
-
-    module: str
-    """The module associated with this output."""
-
-    activation_data: ActivationData
-    """The activation data for this latent."""
+from ..config import ConstructorConfig, SamplerConfig
+from .constructors import constructor
+from .latents import ActivationData, Latent, LatentData, LatentRecord
+from .samplers import sampler
 
 
 @dataclass
@@ -62,9 +37,6 @@ class TensorBuffer:
     latents: Optional[Float[Tensor, "num_latents"]] = None
     """Tensor of latent indices."""
 
-    min_examples: int = 120
-    """Minimum number of examples required. Defaults to 120."""
-
     _tokens: Optional[Float[Tensor, "batch seq"]] = None
     """Tensor of tokens."""
 
@@ -81,14 +53,11 @@ class TensorBuffer:
         for i in range(len(latents)):
             latent_locations = split_locations[i]
             latent_activations = split_activations[i]
-            if len(latent_locations) < self.min_examples:
-                yield None
-            else:
-                yield LatentData(
-                    Latent(self.module_path, int(latents[i].item())),
-                    self.module_path,
-                    ActivationData(latent_locations, latent_activations),
-                )
+            yield LatentData(
+                Latent(self.module_path, int(latents[i].item())),
+                self.module_path,
+                ActivationData(latent_locations, latent_activations),
+            )
 
     @property
     def tokens(self) -> Float[Tensor, "batch seq"] | None:
@@ -148,24 +117,26 @@ class LatentDataset:
     def __init__(
         self,
         raw_dir: str,
-        cfg: LatentConfig,
-        tokenizer: Optional[Callable] = None,
+        sampler_cfg: SamplerConfig,
+        constructor_cfg: ConstructorConfig,
+        tokenizer: Optional[PreTrainedTokenizer | PreTrainedTokenizerFast] = None,
         modules: Optional[list[str]] = None,
         latents: Optional[dict[str, torch.Tensor]] = None,
-        constructor: Optional[Callable] = None,
-        sampler: Optional[Callable] = None,
-        transform: Optional[Callable] = None,
     ):
         """
         Initialize a LatentDataset.
 
         Args:
             raw_dir: Directory containing raw latent data.
-            cfg: Configuration for latent processing.
+            latent_cfg: Configuration for latent processing.
+            experiment_cfg: Configuration for example creation
+            and sampling.
+            tokenizer: Tokenizer used to tokenize the data.
             modules: list of module names to include.
             latents: Dictionary of latents per module.
         """
-        self.cfg = cfg
+        self.constructor_cfg = constructor_cfg
+        self.sampler_cfg = sampler_cfg
         self.buffers: list[TensorBuffer] = []
         self.all_data: dict[str, dict[int, ActivationData] | None] = {}
         self.tokens = None
@@ -187,14 +158,18 @@ class LatentDataset:
         else:
             self.tokenizer = tokenizer
         self.cache_config = cache_config
-        self.constructor = constructor
-        self.sampler = sampler
-        self.transform = transform
 
-        # TODO: is it possible to do this without loading all data?
-        if self.constructor is not None:
-            if self.constructor.keywords["constructor_type"] == "neighbours":
-                self.all_data = self._load_all_data(raw_dir, self.modules)
+        if self.constructor_cfg.non_activating_source == "neighbours":
+            # path is always going to end with /latents
+            split_path = raw_dir.split("/")[:-1]
+            neighbours_path = "/".join(split_path) + "/neighbours"
+            self.neighbours = self.load_neighbours(
+                neighbours_path, self.constructor_cfg.neighbours_type
+            )
+            # TODO: is it possible to do this without loading all data?
+            self.all_data = self._load_all_data(raw_dir, self.modules)
+        else:
+            self.neighbours = None
 
         self.load_tokens()
 
@@ -220,6 +195,15 @@ class LatentDataset:
             )
         return self.tokens
 
+    def load_neighbours(self, neighbours_path: str, neighbours_type: str):
+        neighbours = {}
+        for hookpoint in self.modules:
+            with open(
+                neighbours_path + f"/{hookpoint}-{neighbours_type}.json", "r"
+            ) as f:
+                neighbours[hookpoint] = json.load(f)
+        return neighbours
+
     def _edges(self, raw_dir: str, module: str) -> list[tuple[int, int]]:
         module_dir = Path(raw_dir) / module
         safetensor_files = [f for f in module_dir.glob("*.safetensors")]
@@ -243,9 +227,7 @@ class LatentDataset:
             edges = self._edges(raw_dir, module)
             for start, end in edges:
                 path = f"{raw_dir}/{module}/{start}_{end}.safetensors"
-                tensor_buffer = TensorBuffer(
-                    path, module, min_examples=self.cfg.min_examples
-                )
+                tensor_buffer = TensorBuffer(path, module)
                 if self.tokens is None:
                     self.tokens = tensor_buffer.tokens
                 self.buffers.append(tensor_buffer)
@@ -284,7 +266,9 @@ class LatentDataset:
                 # Adjust end by one as the path avoids overlap
                 path = f"{raw_dir}/{module}/{start}_{end-1}.safetensors"
                 tensor_buffer = TensorBuffer(
-                    path, module, _selected_latents, min_examples=self.cfg.min_examples
+                    path,
+                    module,
+                    _selected_latents,
                 )
                 if self.tokens is None:
                     self.tokens = tensor_buffer.tokens
@@ -353,7 +337,7 @@ class LatentDataset:
                     yield record
             await asyncio.sleep(0)  # Allow other coroutines to run
 
-    async def _aprocess_latent(self, latent_data: LatentData) -> LatentRecord:
+    async def _aprocess_latent(self, latent_data: LatentData) -> LatentRecord | None:
         """
         Asynchronously process a single latent.
 
@@ -363,16 +347,26 @@ class LatentDataset:
         Returns:
             Optional[LatentRecord]: Processed latent record or None.
         """
+        # This should never happen but we need to type check
+        if self.tokens is None:
+            raise ValueError("Tokens are not loaded")
         record = LatentRecord(latent_data.latent)
-        if self.transform is not None:
-            self.transform(record)
-        if self.constructor is not None:
-            self.constructor(
-                record=record,
-                activation_data=latent_data.activation_data,
-                all_data=self.all_data[latent_data.module],
-                tokens=self.tokens,
+        if self.neighbours is not None:
+            record.set_neighbours(
+                self.neighbours[latent_data.module][
+                    str(latent_data.latent.latent_index)
+                ],
             )
-        if self.sampler is not None:
-            self.sampler(record)
+        record = constructor(
+            record=record,
+            activation_data=latent_data.activation_data,
+            constructor_cfg=self.constructor_cfg,
+            tokens=self.tokens,
+            all_data=self.all_data[latent_data.module],
+            tokenizer=self.tokenizer,
+        )
+        # Not enough examples to explain the latent
+        if record is None:
+            return None
+        record = sampler(record, self.sampler_cfg)
         return record

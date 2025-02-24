@@ -202,7 +202,7 @@ class NeighbourCalculator:
                 for start, end in tqdm(
                     zip(batch_boundaries[:-1], batch_boundaries[1:])
                 ):
-                    # get all ind_cantor values between start and start + token_batch_size
+                    # get all ind_cantor values between start and start
                     selected_idx_cantor = idx_cantor[start:end]
                     selected_latent_index = latent_index[start:end]
 

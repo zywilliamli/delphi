@@ -9,7 +9,7 @@ from typing import NamedTuple
 import aiofiles
 
 from ..clients.client import Client
-from ..latents.latents import ActivatingExample, LatentRecord
+from ..latents.latents import LatentRecord
 from ..logger import logger
 
 
@@ -40,7 +40,6 @@ class Explainer(ABC):
 
     async def __call__(self, record: LatentRecord) -> ExplainerResult:
         messages = self._build_prompt(record)
-
         response = await self.client.generate(
             messages, temperature=self.temperature, **self.generation_kwargs
         )

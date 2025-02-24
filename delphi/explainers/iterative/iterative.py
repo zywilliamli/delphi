@@ -1,3 +1,4 @@
+import random
 from dataclasses import dataclass
 from typing import TypeVar
 
@@ -51,6 +52,18 @@ class IterativeExplainer(Explainer):
 
         return highlighted_examples
 
+    def _get_false_positives_and_negatives(
+        self, examples: list[Example]
+    ) -> tuple[list[Example], list[Example]]:
+        false_positives = []
+        false_negatives = []
+        for example in examples:
+            if example.activations.max() > 0:
+                false_negatives.append(example)
+            else:
+                false_positives.append(example)
+        return false_positives, false_negatives
+
     def _build_prompt(self, record: LatentRecord) -> list[dict]:
         examples = record.train
         if record.explanation == "":
@@ -60,22 +73,35 @@ class IterativeExplainer(Explainer):
         else:
             # If there is explanation, use the explanation, the normal examples
             # and the extra examples
-            number_extra_examples = len(record.extra_examples)
-            # we show at most 10 extra examples
-            number_extra_examples = min(number_extra_examples, 10)
-            normal_examples = self._to_string_examples(
-                examples[:-number_extra_examples], self.activations
+            normal_examples = self._to_string_examples(examples, self.activations)
+
+            false_positives, false_negatives = self._get_false_positives_and_negatives(
+                record.extra_examples
             )
-            extra_examples = self._to_string_examples(
-                record.extra_examples[:number_extra_examples], False
+            # we show at most 20 extra examples of each type
+
+            number_extra_false_positives = min(20, len(false_positives))
+            number_extra_false_negatives = min(20, len(false_negatives))
+
+            false_positives_examples = self._to_string_examples(
+                false_positives[:number_extra_false_positives], False
             )
-            return build_prompt(record.explanation, normal_examples, extra_examples)
+            false_negatives_examples = self._to_string_examples(
+                false_negatives[:number_extra_false_negatives], False
+            )
+
+            return build_prompt(
+                record.explanation,
+                normal_examples,
+                false_positives_examples,
+                false_negatives_examples,
+            )
 
 
 @dataclass
 class HillClimbing:
-    scorer: Classifier
-    """Scorer to use for explanation generation."""
+    scorers: list[Classifier]
+    """Scorers to use for explanation generation."""
 
     explainer: IterativeExplainer
     """Explainer to use for explanation generation."""
@@ -83,47 +109,73 @@ class HillClimbing:
     n_loops: int = 5
     """Number of loops to run the explanation generation."""
 
-    def _compute_score(self, results: list[ClassifierOutput]) -> float:
-        score = 0
-        for i, sample in enumerate(results):
-            if sample.correct:
-                score += 1
-
-        print(f"Score: {score}")
-
-        return score / len(results)
-
-    def _get_wrong_examples(self, results: list[ClassifierOutput]) -> list[Example]:
-        wrong_examples = []
-        for i, sample in enumerate(results):
-            if not sample.correct:
-                # Create a extra example
-                if sample.activating:
-                    new_example = ActivatingExample(
-                        tokens=torch.tensor(0),  # this does not matter
-                        activations=torch.tensor(sample.activations),
-                        str_tokens=sample.str_tokens,
-                        normalized_activations=torch.tensor(sample.activations),
-                    )
+    def _compute_score(self, results: list[list[ClassifierOutput]]) -> float:
+        f1_scores = []
+        for result in results:
+            # Score should be f1 score
+            tp = 0
+            fp = 0
+            fn = 0
+            for i, sample in enumerate(result):
+                if sample.correct:
+                    tp += 1
                 else:
-                    new_example = NonActivatingExample(
-                        tokens=torch.tensor(0),  # this does not matter
-                        activations=torch.tensor(sample.activations),
-                        str_tokens=sample.str_tokens,
-                    )
-                wrong_examples.append(new_example)
+                    fp += 1
+                    fn += 1
+            precision = tp / (tp + fp)
+            recall = tp / (tp + fn)
+            f1 = 2 * precision * recall / (precision + recall)
+            f1_scores.append(f1)
+        print(f"F1 scores: {f1_scores}")
+
+        return sum(f1_scores) / len(f1_scores)
+
+    def _get_wrong_examples(
+        self, results: list[list[ClassifierOutput]]
+    ) -> list[Example]:
+        wrong_examples = []
+        for result in results:
+            for i, sample in enumerate(result):
+                if not sample.correct:
+                    # Create a extra example
+                    if sample.activating:
+                        new_example = ActivatingExample(
+                            tokens=torch.tensor(0),  # this does not matter
+                            activations=torch.tensor(sample.activations),
+                            str_tokens=sample.str_tokens,
+                            normalized_activations=torch.tensor(sample.activations),
+                        )
+                    else:
+                        new_example = NonActivatingExample(
+                            tokens=torch.tensor(0),  # this does not matter
+                            activations=torch.tensor(sample.activations),
+                            str_tokens=sample.str_tokens,
+                        )
+                    wrong_examples.append(new_example)
         return wrong_examples
 
     async def __call__(self, record: LatentRecord) -> list[ScorerResult] | None:
 
-        first_generation_examples = record.train
+        train_examples = record.train
+        activating_examples = record.test
+        non_activating_examples = record.not_active
+
+        # shuffle the examples
+        random.shuffle(activating_examples)
+        random.shuffle(non_activating_examples)
+
+        first_generation_examples = train_examples
         held_out_set_size = len(record.test) // 3
-        held_out_activating_examples = record.test[:held_out_set_size]
-        held_out_non_activating_examples = record.not_active[:held_out_set_size]
-        train_test_activating_examples = record.test[held_out_set_size:]
-        train_test_non_activating_examples = record.not_active[held_out_set_size:]
+        held_out_activating_examples = activating_examples[:held_out_set_size]
+        held_out_non_activating_examples = non_activating_examples[:held_out_set_size]
+        train_test_activating_examples = activating_examples[held_out_set_size:]
+        train_test_non_activating_examples = non_activating_examples[held_out_set_size:]
 
         first_explanation = await self.explainer(record)
+        record.explanation = first_explanation.explanation
+
+        print("----- First explanation ------")
+        print(first_explanation.explanation)
         if first_explanation.explanation == "Explanation could not be parsed.":
             # TODO: Do I want this?
             return None
@@ -135,44 +187,57 @@ class HillClimbing:
             test=held_out_activating_examples,
             explanation=first_explanation.explanation,
         )
-
-        results = await self.scorer(test_record)
+        results = []
+        for scorer in self.scorers:
+            result = await scorer(test_record)
+            results.append(result.score)
         print("----- Holdout score ------")
-        _ = self._compute_score(results.score)
+        holdout_score = self._compute_score(results)
 
-        number_examples_per_loop = len(train_test_activating_examples) // self.n_loops
         scores = [results]
         for i in range(self.n_loops):
-            start_idx = i * number_examples_per_loop
-            end_idx = (i + 1) * number_examples_per_loop
-            selected_activating = train_test_activating_examples[start_idx:end_idx]
-            selected_non_active = train_test_non_activating_examples[start_idx:end_idx]
+            print(f"----- Loop {i} ------")
+
+            random.shuffle(train_test_non_activating_examples)
+            random.shuffle(train_test_activating_examples)
+
             new_record = LatentRecord(
                 latent=record.latent,
                 train=first_generation_examples,
-                not_active=selected_non_active,
-                test=selected_activating,
+                not_active=train_test_non_activating_examples[:held_out_set_size],
+                test=train_test_activating_examples[:held_out_set_size],
                 explanation=first_explanation.explanation,
             )
-            results = await self.scorer(new_record)
+            results = []
+            for scorer in self.scorers:
+                result = await scorer(new_record)
+                results.append(result.score)
             print("----- Train score ------")
-            _ = self._compute_score(results.score)
+            _ = self._compute_score(results)
             # get the wrong examples
-            wrong_examples = self._get_wrong_examples(results.score)
+            wrong_examples = self._get_wrong_examples(results)
             # update the record
             record.extra_examples.extend(wrong_examples)
             # update the explanation
             new_explanation = await self.explainer(record)
             if new_explanation.explanation == "Explanation could not be parsed.":
+                print("Error generating explanation")
                 pass  # we do not update the explanation
-            else:
-                first_explanation = new_explanation
 
+            print("----- New explanation ------")
+            print(new_explanation.explanation)
             # compute the score in the held out set
             test_record.explanation = new_explanation.explanation
-            results = await self.scorer(test_record)
+            results = []
+            for scorer in self.scorers:
+                result = await scorer(test_record)
+                results.append(result.score)
             print("----- Holdout score ------")
-            _ = self._compute_score(results.score)
+            new_holdout_score = self._compute_score(results)
             scores.append(results)
+            if new_holdout_score > holdout_score:
+                holdout_score = new_holdout_score
+                record.explanation = new_explanation.explanation
+                first_explanation = new_explanation
 
-            return scores
+        return scores

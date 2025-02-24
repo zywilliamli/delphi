@@ -165,7 +165,8 @@ async def process_cache(
     explainer_pipe = process_wrapper(
         DefaultExplainer(
             client,
-            threshold=0.3,
+            threshold=run_cfg.explainer_threshold,
+            temperature=run_cfg.explainer_temperature,
             verbose=run_cfg.verbose,
         ),
         postprocess=explainer_postprocess,
@@ -189,9 +190,11 @@ async def process_cache(
         process_wrapper(
             DetectionScorer(
                 client,
+                threshold=run_cfg.scorer_threshold,
                 n_examples_shown=run_cfg.num_examples_per_scorer_prompt,
                 verbose=run_cfg.verbose,
                 log_prob=False,
+                temperature=run_cfg.scorer_temperature,
             ),
             preprocess=scorer_preprocess,
             postprocess=partial(scorer_postprocess, score_dir=detection_scores_path),
@@ -199,9 +202,11 @@ async def process_cache(
         process_wrapper(
             FuzzingScorer(
                 client,
+                threshold=run_cfg.scorer_threshold,
                 n_examples_shown=run_cfg.num_examples_per_scorer_prompt,
                 verbose=run_cfg.verbose,
                 log_prob=False,
+                temperature=run_cfg.scorer_temperature,
             ),
             preprocess=scorer_preprocess,
             postprocess=partial(scorer_postprocess, score_dir=fuzz_scores_path),
@@ -259,7 +264,8 @@ def populate_cache(
     cache.run(cache_cfg.n_tokens, tokens)
 
     if run_cfg.verbose:
-        cache.generate_statistics_cache()
+        # cache.generate_statistics_cache()
+        pass
 
     cache.save_splits(
         # Split the activation and location indices into different files to make

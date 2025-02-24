@@ -74,6 +74,7 @@ class FuzzingScorer(Classifier, Scorer):
                 record.not_active,
                 n_incorrect=n_incorrect,
                 highlighted=True,
+                threshold=self.threshold,
             )
 
         else:
@@ -84,6 +85,7 @@ class FuzzingScorer(Classifier, Scorer):
                 record.test,
                 n_incorrect=0,
                 highlighted=True,
+                threshold=self.threshold,
             )
         )
         return samples

@@ -122,6 +122,26 @@ class RunConfig(Serializable):
     """Provider to use for explanation and scoring. Options are 'offline' for local
     models and 'openrouter' for API calls."""
 
+    scorer_threshold: float = field(
+        default=0.3,
+    )
+    """Threshold to use for scoring."""
+
+    explainer_threshold: float = field(
+        default=0.3,
+    )
+    """Threshold to use for explanation."""
+
+    scorer_temperature: float = field(
+        default=0.0,
+    )
+    """Temperature to use for scoring."""
+
+    explainer_temperature: float = field(
+        default=0.0,
+    )
+    """Temperature to use for explanation."""
+
     name: str = ""
     """The name of the run. Results are saved in a directory with this name."""
 

@@ -14,6 +14,7 @@ class DetectionScorer(Classifier):
         verbose: bool = False,
         n_examples_shown: int = 1,
         log_prob: bool = False,
+        threshold: float = 0.3,
         temperature: float = 0.0,
         **generation_kwargs,
     ):
@@ -38,6 +39,7 @@ class DetectionScorer(Classifier):
             temperature=temperature,
             **generation_kwargs,
         )
+        self.threshold = threshold
 
     def prompt(self, examples: str, explanation: str) -> list[dict]:
         return prompt(examples, explanation)
@@ -50,6 +52,7 @@ class DetectionScorer(Classifier):
         if len(record.not_active) > 0:
             samples = examples_to_samples(
                 record.not_active,
+                threshold=self.threshold,
             )
 
         else:
@@ -58,6 +61,7 @@ class DetectionScorer(Classifier):
         samples.extend(
             examples_to_samples(
                 record.test,
+                threshold=self.threshold,
             )
         )
 

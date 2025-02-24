@@ -180,6 +180,7 @@ class LatentCache:
         model: PreTrainedModel,
         hookpoint_to_sparse_encode: dict[str, Callable],
         batch_size: int,
+        transcode: bool = False,
         filters: dict[str, Float[Tensor, "indices"]] | None = None,
     ):
         """
@@ -193,7 +194,7 @@ class LatentCache:
         """
         self.model = model
         self.hookpoint_to_sparse_encode = hookpoint_to_sparse_encode
-
+        self.transcode = transcode
         self.batch_size = batch_size
         self.width = None
         self.cache = Cache(filters, batch_size=batch_size)
@@ -258,7 +259,9 @@ class LatentCache:
 
                 with torch.no_grad():
                     with collect_activations(
-                        self.model, list(self.hookpoint_to_sparse_encode.keys())
+                        self.model,
+                        list(self.hookpoint_to_sparse_encode.keys()),
+                        self.transcode,
                     ) as activations:
                         self.model(batch.to(self.model.device))
 

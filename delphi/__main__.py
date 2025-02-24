@@ -222,6 +222,7 @@ def populate_cache(
     hookpoint_to_sparse_encode: dict[str, Callable],
     latents_path: Path,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
+    transcode: bool,
 ):
     """
     Populates an on-disk cache in `latents_path` with SAE latent activations.
@@ -254,6 +255,7 @@ def populate_cache(
         model,
         hookpoint_to_sparse_encode,
         batch_size=cache_cfg.batch_size,
+        transcode=transcode,
     )
     cache.run(cache_cfg.n_tokens, tokens)
 
@@ -329,6 +331,7 @@ async def run(
             nrh,
             latents_path,
             tokenizer,
+            run_cfg.transcode,
         )
 
     del model, hookpoint_to_sparse_encode

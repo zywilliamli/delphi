@@ -3,10 +3,9 @@ from pathlib import Path
 import numpy as np
 import orjson
 import pandas as pd
-from torch import Tensor
-
 import plotly.express as px
 import plotly.io as pio
+from torch import Tensor
 
 pio.kaleido.scope.mathjax = None  # https://github.com/plotly/plotly.py/issues/3469
 

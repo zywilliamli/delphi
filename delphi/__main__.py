@@ -1,7 +1,6 @@
 import asyncio
 import os
 from functools import partial
-from glob import glob
 from pathlib import Path
 from typing import Callable
 
@@ -269,8 +268,9 @@ def populate_cache(
 
 
 def non_redundant_hookpoints(
-    hookpoint_to_sparse_encode: dict[str, Callable] | list[str], results_path: Path,
-    overwrite: bool
+    hookpoint_to_sparse_encode: dict[str, Callable] | list[str],
+    results_path: Path,
+    overwrite: bool,
 ):
     """
     Returns a list of hookpoints that are not already in the cache.
@@ -281,18 +281,21 @@ def non_redundant_hookpoints(
     in_results_path = [x.name for x in results_path.glob("*")]
     if isinstance(hookpoint_to_sparse_encode, dict):
         non_redundant_hookpoints = {
-            k: v for k, v in hookpoint_to_sparse_encode.items()
+            k: v
+            for k, v in hookpoint_to_sparse_encode.items()
             if k not in in_results_path
         }
     else:
         non_redundant_hookpoints = [
-            hookpoint for hookpoint in hookpoint_to_sparse_encode
+            hookpoint
+            for hookpoint in hookpoint_to_sparse_encode
             if hookpoint not in in_results_path
         ]
     if not non_redundant_hookpoints:
         print(f"Files found in {results_path}, skipping...")
         return None
     return non_redundant_hookpoints
+
 
 async def run(
     run_cfg: RunConfig,

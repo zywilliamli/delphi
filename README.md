@@ -228,6 +228,16 @@ Example scripts can be found in `demos`. Some of these scripts can be called fro
 
 The experiments discussed in [the blog post](https://blog.eleuther.ai/autointerp/) were mostly run in a legacy version of this code, which can be found in the [Experiments](https://github.com/EleutherAI/delphi/tree/Experiments) branch.
 
+## Development
+
+Run unit tests: 
+
+```pytest .```
+
+Run an end-to-end test:
+
+```python -m delphi.tests.e2e```
+
 ## License
 
 Copyright 2024 the EleutherAI Institute

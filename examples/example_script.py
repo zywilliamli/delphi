@@ -26,10 +26,10 @@ from delphi.pipeline import Pipe, Pipeline, process_wrapper
 from delphi.scorers import DetectionScorer, FuzzingScorer
 
 """
-uv run python -m examples.example_script --model monet_cache_converted/850m --module .model.layers.4.router --latents 6144  --width 262144
+uv run python -m examples.example_script --model monet_cache_converted/850m --module .model.layers.4.router --latents 6144 --width 262144 --random_subset
 uv run python -m sglang_router.launch_server --model-path "hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4" --port 8000 --host 0.0.0.0 --tensor-parallel-size=2 --mem-fraction-static=0.8 --dp-size 2 
 uv run python -m examples.example_script --model itda_cache/pythia-l9_mlp-transcoder-mean-skip-k32 --module gpt_neox.layers.9.mlp --latents 500 --width 50142 --random_subset
-uv run python -m examples.example_script --model sae_pkm/baseline --module model.layers.9 --latents 500 --random_subset
+uv run python -m examples.example_script --model sae_pkm/baseline --module .model.layers.9 --latents 500 --random_subset
 """
 
 # run with python examples/example_script.py --model gemma/16k --module
@@ -58,7 +58,7 @@ async def main(args):
     substitute = args.substitute
     if substitute != Substitution.NONE:
         experiment_name_scores += "_substitute_" + substitute.value
-        embedding_model = SentenceTransformer("NovaSearch/stella_en_400M_v5", trust_remote_code=True).cuda()
+        embedding_model = SentenceTransformer("NovaSearch/stella_en_400M_v5", trust_remote_code=True)
 
     raw_dir = f"results/{args.model}"
     latents = torch.arange(start_latent,start_latent+n_latents)

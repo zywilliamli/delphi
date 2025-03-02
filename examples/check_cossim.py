@@ -34,11 +34,11 @@ embeds = {k: v for k, v in
 #%%
 from collections import defaultdict
 import numpy as np
+from math import ceil
 idces = list(feature_descs.keys())
 embed_array = [embeds[feature_descs[i]] for i in idces]
 embed_array = np.array(embed_array)
 sims = st.similarity(embed_array, embed_array).numpy()
-from math import ceil
 root = int(ceil(n_features ** 0.5))
 n_features_padded = n_features + root - n_features % root
 idx_roots = np.floor(np.array(idces, dtype=np.float64) / float(root))
@@ -53,8 +53,12 @@ def pad_group(i):
     a = a.reshape(n_features_padded, root, root)
     return a
 sims, same_group, same_latent = map(pad_group, (sims, same_group, same_latent))
+#%%
+k = 0
+def take_k(arr, k):
+    return np.partition(-arr, k, axis=-1)[..., k]
 not_same = sims * (~same_latent & ~same_group)
-not_same = not_same.max(-1)
+not_same = take_k(not_same, k)
 n_samples = 16
 if n_samples == 0:
     not_same = not_same.sum(-1) / (not_same != 0).sum(-1)
@@ -64,7 +68,7 @@ else:
 not_same = not_same.flatten()
 not_same = not_same[not_same != 0]
 same = sims * (~same_latent & same_group)
-same = same.max(-1).flatten()
+same = take_k(same, k).flatten()
 same = same[same != 0]
 # not_same = (sims * (~same_latent & ~same_group)).topk(n_groups, dim=-1)[0][:, -1]
 # same = (sims * (~same_latent & same_group)).max(-1)[0]

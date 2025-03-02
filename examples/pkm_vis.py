@@ -8,7 +8,7 @@ import os
 
 """
 python -m examples.cache_saes --pkm=True
-python -m examples.example_script --model sae_pkm/with_pkm_sae --module gpt_neox.layers.8 --features 500
+python -m examples.example_script --model sae_pkm/with_pkm_sae --module gpt_neox.layers.8 --latent 500
 """
 
 def hist(x, *, ax, label):
@@ -22,16 +22,29 @@ for group_name, config_group in {
     # ("with_pkm_transcoder", "without_pkm_transcoder"),
     # ("baseline", "ef64-k64", "pkm-x32")
     "pkm-comparison": (
+        ("baseline", "default"),
         ("ef64-k64", "default"),
-    )
+        ("kron-baseline", "default"),
+        ("pkm-x32", "default"),
+    ),
+    "pkm-comparison-neighbors": (
+        ("baseline", "default_neighbors"),
+        ("ef64-k64", "default_neighbors"),
+        ("kron-baseline", "default_neighbors"),
+        ("pkm-x32", "default_neighbors"),
+    ),
     # "pkm-32-neighbors-substitution": (
     #     ("pkm-x32", "default_neighbors_substitute_self"),
     #     ("pkm-x32", "default_neighbors_substitute_other")
     # ),
-    # "pkm-32-substitution": (
-    #     ("pkm-x32", "default_substitute_self"),
-    #     ("pkm-x32", "default_substitute_other")
-    # ),
+    "pkm-32-substitution": (
+        ("pkm-x32", "default_substitute_self"),
+        ("pkm-x32", "default_substitute_other")
+    ),
+    "ef64-k64-substitution": (
+        ("ef64-k64", "default_substitute_self"),
+        ("ef64-k64", "default_substitute_other")
+    ),
 }.items():
     for layer in range(24):
         fuzz_accs = {}
@@ -67,8 +80,8 @@ for group_name, config_group in {
             try:
                 fuzz_accs[config_name] = feature_accs("fuzz")
                 detect_accs[config_name] = feature_accs("detection")
-            except FileNotFoundError:
-                print(f"Skipping layer {layer} for config {group_name}")
+            except FileNotFoundError as e:
+                print(f"Skipping layer {layer} for config {group_name}:", e)
                 break
         else:
             save_dir = f"results/pkm_autointerp/{group_name}"

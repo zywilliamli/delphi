@@ -1,43 +1,56 @@
 import asyncio
-import re
+from dataclasses import dataclass
 
-import faiss
+import torch
 
-from delphi.explainers.default.prompt_builder import build_single_token_prompt
+from delphi.explainers.default.prompts import SYSTEM_CONTRASTIVE
 from delphi.explainers.explainer import Explainer, ExplainerResult
-from delphi.logger import logger
+from delphi.latents.latents import ActivatingExample, LatentRecord, NonActivatingExample
 
 
+@dataclass
 class ContrastiveExplainer(Explainer):
-    name = "contrastive"
+    activations: bool = True
+    """Whether to show activations to the explainer."""
+    max_examples: int = 15
+    """Maximum number of activating examples to use."""
+    max_non_activating: int = 5
+    """Maximum number of non-activating examples to use."""
 
-    def __init__(
-        self,
-        client,
-        tokenizer,
-        index: faiss.Index,
-        verbose: bool = False,
-        activations: bool = False,
-        cot: bool = False,
-        threshold: float = 0.6,
-        temperature: float = 0.0,
-        **generation_kwargs,
-    ):
-        self.client = client
-        self.tokenizer = tokenizer
-        self.index = index
-        self.verbose = verbose
+    async def __call__(self, record: LatentRecord) -> ExplainerResult:
+        """
+        Override the base __call__ method to use both train and not_active examples.
 
-        self.activations = activations
-        self.cot = cot
-        self.threshold = threshold
-        self.temperature = temperature
-        self.generation_kwargs = generation_kwargs
+        Args:
+            record: The latent record containing both activating and
+                non-activating examples.
 
-    async def __call__(self, record):
-        breakpoint()
-        messages = self._build_prompt(record.train)
+        Returns:
+            ExplainerResult: The explainer result containing the explanation.
+        """
+        # Sample from both activating and non-activating examples
+        activating_examples = record.train[: self.max_examples]
 
+        non_activating_examples = []
+        if len(record.not_active) > 0:
+            non_activating_examples = record.not_active[: self.max_non_activating]
+
+            # Ensure non-activating examples have normalized activations for consistency
+            for example in non_activating_examples:
+                if example.normalized_activations is None:
+                    # Use zeros for non-activating examples
+                    example.normalized_activations = torch.zeros_like(
+                        example.activations
+                    )
+
+        # Combine examples for the prompt
+        combined_examples = activating_examples + non_activating_examples
+
+        # Build the prompt with both types of examples
+        messages = self._build_prompt(combined_examples)
+        print("message", messages[-1]["content"])
+
+        # Generate the explanation
         response = await self.client.generate(
             messages, temperature=self.temperature, **self.generation_kwargs
         )
@@ -45,84 +58,88 @@ class ContrastiveExplainer(Explainer):
         try:
             explanation = self.parse_explanation(response.text)
             if self.verbose:
-                return (
-                    messages[-1]["content"],
-                    response,
-                    ExplainerResult(record=record, explanation=explanation),
-                )
+                from ..logger import logger
+
+                logger.info(f"Explanation: {explanation}")
+                logger.info(f"Messages: {messages[-1]['content']}")
+                logger.info(f"Response: {response}")
 
             return ExplainerResult(record=record, explanation=explanation)
         except Exception as e:
+            from ..logger import logger
+
             logger.error(f"Explanation parsing failed: {e}")
             return ExplainerResult(
                 record=record, explanation="Explanation could not be parsed."
             )
 
-    def parse_explanation(self, text: str) -> str:
-        try:
-            match = re.search(r"\[EXPLANATION\]:\s*(.*)", text, re.DOTALL)
-            return (
-                match.group(1).strip() if match else "Explanation could not be parsed."
-            )
-        except Exception as e:
-            logger.error(f"Explanation parsing regex failed: {e}")
-            raise
+    def _build_prompt(
+        self, examples: list[ActivatingExample | NonActivatingExample]
+    ) -> list[dict]:
+        """
+        Build a prompt with both activating and non-activating examples clearly labeled.
 
-    def _highlight(self, index, example):
-        # result = f"Example {index}: "
-        result = ""
-        threshold = example.max_activation * self.threshold
-        if self.tokenizer is not None:
-            str_toks = self.tokenizer.batch_decode(example.tokens)
-            example.str_toks = str_toks
-        else:
-            str_toks = example.tokens
-            example.str_toks = str_toks
-        activations = example.activations
+        Args:
+            examples: List containing both activating and non-activating examples.
 
-        def check(i):
-            return activations[i] > threshold
-
-        i = 0
-        while i < len(str_toks):
-            if check(i):
-                # result += "<<"
-
-                while i < len(str_toks) and check(i):
-                    result += str_toks[i]
-                    i += 1
-                # result += ">>"
-            else:
-                # result += str_toks[i]
-                i += 1
-
-        return "".join(result)
-
-    def _join_activations(self, example):
-        activations = []
-
-        for i, activation in enumerate(example.activations):
-            if activation > example.max_activation * self.threshold:
-                activations.append(
-                    (example.str_toks[i], int(example.normalized_activations[i]))
-                )
-
-        acts = ", ".join(f'("{item[0]}" : {item[1]})' for item in activations)
-
-        return "Activations: " + acts
-
-    def _build_prompt(self, examples):
+        Returns:
+            A list of message dictionaries for the prompt.
+        """
         highlighted_examples = []
 
-        for i, example in enumerate(examples):
-            highlighted_examples.append(self._highlight(i + 1, example))
+        # First, separate activating and non-activating examples
+        activating_examples = [
+            ex for ex in examples if isinstance(ex, ActivatingExample)
+        ]
+        non_activating_examples = [
+            ex for ex in examples if not isinstance(ex, ActivatingExample)
+        ]
 
-            if self.activations:
-                highlighted_examples.append(self._join_activations(example))
+        # Process activating examples
+        if activating_examples:
+            highlighted_examples.append("EXAMPLES:")
+            for i, example in enumerate(activating_examples, 1):
+                str_toks = example.str_tokens
+                activations = example.activations.tolist()
+                highlighted_examples.append(
+                    f"Example {i}:  {self._highlight(str_toks, activations)}"
+                )
 
-        return build_single_token_prompt(
-            examples=highlighted_examples,
-        )
+                if self.activations and example.normalized_activations is not None:
+                    normalized_activations = example.normalized_activations.tolist()
+                    highlighted_examples.append(
+                        self._join_activations(
+                            str_toks, activations, normalized_activations
+                        )
+                    )
+
+        # Process non-activating examples
+        if non_activating_examples:
+            highlighted_examples.append("\nCOUNTEREXAMPLES:")
+            for i, example in enumerate(non_activating_examples, 1):
+                str_toks = example.str_tokens
+                activations = example.activations.tolist()
+                # Note: For non-activating examples, the _highlight method won't
+                # highlight anything since activation values will be below threshold
+                highlighted_examples.append(
+                    f"Example {i}:  {self._highlight(str_toks, activations)}"
+                )
+
+        # Join all sections into a single string
+        highlighted_examples_str = "\n".join(highlighted_examples)
+
+        # Create messages array with the system prompt
+        return [
+            {
+                "role": "system",
+                "content": SYSTEM_CONTRASTIVE.format(prompt=""),
+            },
+            {
+                "role": "user",
+                "content": f"WORDS: {highlighted_examples_str}",
+            },
+        ]
 
     def call_sync(self, record):
+        """Synchronous wrapper for the asynchronous __call__ method."""
         return asyncio.run(self.__call__(record))

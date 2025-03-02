@@ -25,7 +25,6 @@ from delphi.latents.neighbours import NeighbourCalculator
 from delphi.log.result_analysis import log_results
 from delphi.pipeline import Pipe, Pipeline, process_wrapper
 from delphi.scorers import DetectionScorer, FuzzingScorer
-from delphi.semantic_index.index import build_or_load_index, load_index
 from delphi.sparse_coders import load_hook_to_sparse_encode, load_sparse_coders
 from delphi.utils import assert_type
 
@@ -97,7 +96,6 @@ def create_neighbours(
 
 async def process_cache(
     run_cfg: RunConfig,
-    base_path: Path,
     latents_path: Path,
     explanations_path: Path,
     scores_path: Path,
@@ -133,9 +131,6 @@ async def process_cache(
         tokenizer=tokenizer,
     )
 
-    if run_cfg.semantic_index:
-        index = load_index(base_path, run_cfg.cache_cfg)
-
     if run_cfg.explainer_provider == "offline":
         client = Offline(
             run_cfg.explainer_model,
@@ -165,16 +160,19 @@ async def process_cache(
             f"Explainer provider {run_cfg.explainer_provider} not supported"
         )
 
+    from delphi.explainers.explainer import ExplainerResult
+
     def explainer_postprocess(result):
         with open(explanations_path / f"{result.record.latent}.txt", "wb") as f:
             f.write(orjson.dumps(result.explanation))
+
+        if not isinstance(result, ExplainerResult):
+            breakpoint()
         return result
 
-    if run_cfg.semantic_index:
+    if run_cfg.constructor_cfg.non_activating_source == "FAISS":
         explainer = ContrastiveExplainer(
             client,
-            tokenizer=dataset.tokenizer,
-            index=index,
             threshold=0.3,
             verbose=run_cfg.verbose,
         )
@@ -189,6 +187,9 @@ async def process_cache(
 
     # Builds the record from result returned by the pipeline
     def scorer_preprocess(result):
+        if isinstance(result, list):
+            result = result[0]
+
         record = result.record
         record.explanation = result.explanation
         record.extra_examples = record.not_active
@@ -259,8 +260,8 @@ def populate_cache(
     )
     data = data.shuffle(run_cfg.seed)
 
-    if run_cfg.semantic_index:
-        build_or_load_index(data, base_path, run_cfg.cache_cfg)
+    # if run_cfg.constructor_cfg.non_activating_source == "FAISS":
+    # build_or_load_index(data, base_path, run_cfg.cache_cfg)
 
     tokens_ds = chunk_and_tokenize(
         data,  # type: ignore
@@ -368,9 +369,6 @@ async def run(
             transcode,
         )
 
-    if run_cfg.semantic_index:
-        load_index(base_path, run_cfg.cache_cfg)
-
     del model, hookpoint_to_sparse_encode
     if run_cfg.constructor_cfg.non_activating_source == "neighbours":
         non_redundant_hookpoints = assert_type(
@@ -398,7 +396,6 @@ async def run(
     if non_redundant_hookpoints:
         await process_cache(
             run_cfg,
-            base_path,
             latents_path,
             explanations_path,
             scores_path,

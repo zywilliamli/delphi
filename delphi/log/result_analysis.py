@@ -11,7 +11,11 @@ def import_plotly():
         import plotly.express as px
         import plotly.io as pio
     except ImportError:
-        raise ImportError("Plotly is not installed. Please install it using `pip install plotly`, or install the `[visualize]` extra.")
+        raise ImportError(
+            "Plotly is not installed.\n"
+            "Please install it using `pip install plotly`, "
+            "or install the `[visualize]` extra."
+        )
     pio.kaleido.scope.mathjax = None  # https://github.com/plotly/plotly.py/issues/3469
     return px
 
@@ -233,7 +237,7 @@ def build_scores_df(path: Path, target_modules: list[str], range: Tensor | None 
 
 def plot_line(df: pd.DataFrame, visualize_path: Path):
     px = import_plotly()
-    
+
     visualize_path.mkdir(parents=True, exist_ok=True)
 
     for score_type in df["score_type"].unique():

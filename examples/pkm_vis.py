@@ -33,10 +33,20 @@ for group_name, config_group in {
         ("kron-baseline", "default_neighbors"),
         ("pkm-x32", "default_neighbors"),
     ),
+    "pkm-comparison-neighbors-decoder": (
+        ("baseline", "default_neighbors_ds"),
+        ("ef64-k64", "default_neighbors_ds"),
+        ("kron-baseline", "default_neighbors_ds"),
+        ("pkm-x32", "default_neighbors_ds"),
+    ),
     # "pkm-32-neighbors-substitution": (
     #     ("pkm-x32", "default_neighbors_substitute_self"),
     #     ("pkm-x32", "default_neighbors_substitute_other")
     # ),
+    "monet-850m-substitution": (
+        ("../monet_cache_converted/850m", "default_substitute_self"),
+        ("../monet_cache_converted/850m", "default_substitute_other")
+    ),
     "pkm-32-substitution": (
         ("pkm-x32", "default_substitute_self"),
         ("pkm-x32", "default_substitute_other")
@@ -72,6 +82,8 @@ for group_name, config_group in {
                             skipped += 1
                             continue
                         corrects.append(int(text["correct"] == True))
+                    if not corrects:
+                        continue
                     feature_accs.append(sum(corrects)/len(corrects))
                 if not feature_accs:
                     raise FileNotFoundError

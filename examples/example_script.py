@@ -54,6 +54,9 @@ async def main(args):
     if args.neighbors:
         experiment_cfg.non_activating_source = "neighbors"
         experiment_name += "_neighbors"
+        if args.decoder_similarity:
+            experiment_cfg.neighbours_type = "decoder_similarity"
+            experiment_name += "_ds"
     experiment_name_scores = experiment_name
     substitute = args.substitute
     if substitute != Substitution.NONE:
@@ -268,6 +271,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment_name", type=str, default="default")
     parser.add_argument("--random_subset", action="store_true")
     parser.add_argument("--neighbors", action="store_true")
+    parser.add_argument("--decoder_similarity", action="store_true")
     parser.add_argument("--substitute", type=Substitution, default=Substitution.NONE)
     parser.add_arguments(ExperimentConfig, dest="experiment_options")
     parser.add_arguments(LatentConfig, dest="latent_options")

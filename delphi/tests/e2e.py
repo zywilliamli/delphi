@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 
 import torch
+from pandas import DataFrame
 
 from delphi.__main__ import RunConfig, run
 from delphi.config import CacheConfig, ConstructorConfig, SamplerConfig
@@ -60,7 +61,7 @@ async def test():
     scores_path = Path("results") / run_cfg.name / "scores"
     df = build_scores_df(scores_path, run_cfg.hookpoints)
     for score_type in df["score_type"].unique():
-        score_df = df[df["score_type"] == score_type]
+        score_df: DataFrame = df[df["score_type"] == score_type]
         weighted_mean_metrics = latent_balanced_score_metrics(
             score_df, score_type, verbose=False
         )

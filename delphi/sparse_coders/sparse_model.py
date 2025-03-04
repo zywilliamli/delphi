@@ -2,6 +2,7 @@ from typing import Callable
 
 import torch
 import torch.nn as nn
+from sparsify import SparseCoder
 from transformers import PreTrainedModel
 
 from delphi.config import RunConfig
@@ -74,7 +75,7 @@ def load_sparse_coders(
     run_cfg: RunConfig,
     device: str | torch.device,
     compile: bool = False,
-) -> dict[str, nn.Module]:
+) -> dict[str, nn.Module] | dict[str, SparseCoder]:
     """
     Load sparse coders for specified hookpoints.
 

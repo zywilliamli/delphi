@@ -35,7 +35,7 @@ class OpenRouter(Client):
         msg = response_json["choices"][0]["message"]["content"]
         return Response(msg)
 
-    async def generate(
+    async def generate(  # type: ignore
         self, prompt: str, raw: bool = False, max_retries: int = 1, **kwargs  # type: ignore
     ) -> Response:  # type: ignore
         kwargs.pop("schema", None)

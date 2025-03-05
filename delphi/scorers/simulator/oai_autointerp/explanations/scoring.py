@@ -177,6 +177,8 @@ async def simulate_and_score(
                 for non_activation_record in non_activation_records
             ]
         )
+    else:
+        non_activating_scored_seq_simulations = []
 
     # with open('test.txt', 'w') as f:
     #     f.write(str(scored_sequence_simulations))

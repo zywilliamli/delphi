@@ -25,7 +25,7 @@ class OpenAISimulator(Scorer):
         self.tokenizer = tokenizer
         self.all_at_once = all_at_once
 
-    async def __call__(self, record):
+    async def __call__(self, record):  # type: ignore
         # Simulate and score the explanation.
         cls = (
             ExplanationNeuronSimulator

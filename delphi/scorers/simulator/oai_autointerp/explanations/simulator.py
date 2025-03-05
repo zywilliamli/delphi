@@ -331,6 +331,7 @@ def _format_record_for_logprob_free_simulation(
     max_activation: Optional[float] = None,
 ) -> str:
     response = ""
+    normalized_activations = None
     if include_activations:
         assert max_activation is not None
         assert len(activation_record.tokens) == len(
@@ -339,6 +340,7 @@ def _format_record_for_logprob_free_simulation(
         normalized_activations = normalize_activations(
             activation_record.activations, max_activation=max_activation
         )
+
     for i, token in enumerate(activation_record.tokens):
         # Edge Case #3: End tokens confuse the chat-based simulator. Replace end token with "not end token".
         if token.strip() == END_OF_TEXT_TOKEN:

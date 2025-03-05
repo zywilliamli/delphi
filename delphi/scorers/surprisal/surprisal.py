@@ -55,10 +55,10 @@ class SurprisalScorer(Scorer):
         self.batch_size = batch_size
         self.generation_kwargs = generation_kwargs
 
-    async def __call__(
-        self,
-        record: LatentRecord,
-    ) -> ScorerResult:
+    async def __call__(  # type: ignore
+        self,  # type: ignore
+        record: LatentRecord,  # type: ignore
+    ) -> ScorerResult:  # type: ignore
         samples = self._prepare(record)
 
         random.shuffle(samples)

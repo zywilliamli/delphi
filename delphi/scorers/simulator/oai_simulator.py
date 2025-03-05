@@ -37,9 +37,9 @@ class OpenAISimulator(Scorer):
             record.explanation,
         )
 
-        valid_activation_records = self.to_activation_records(record.test)
+        valid_activation_records = self.to_activation_records(record.test)  # type: ignore
         if len(record.not_active) > 0:
-            non_activation_records = self.to_activation_records([record.not_active])
+            non_activation_records = self.to_activation_records([record.not_active])  # type: ignore
         else:
             non_activation_records = []
 
@@ -53,13 +53,13 @@ class OpenAISimulator(Scorer):
         )
 
     def to_activation_records(self, examples: list[Example]) -> list[ActivationRecord]:
-        return [
+        return [  # type: ignore
             [
                 ActivationRecord(
                     self.tokenizer.batch_decode(example.tokens),
                     example.normalized_activations.half(),
                 )
-                for example in quantiles
+                for example in quantiles  # type: ignore
             ]
             for quantiles in examples
         ]

@@ -20,7 +20,7 @@ class OpenRouter(Client):
     def __init__(
         self,
         model: str,
-        api_key: str = None,
+        api_key: str | None = None,
         base_url="https://openrouter.ai/api/v1/chat/completions",
     ):
         super().__init__(model)
@@ -36,7 +36,7 @@ class OpenRouter(Client):
         return Response(msg)
 
     async def generate(
-        self, prompt: str, raw: bool = False, max_retries: int = 1, **kwargs
+        self, prompt: str, raw: bool = False, max_retries: int = 1, **kwargs  # type: ignore
     ) -> Response:  # type: ignore
         kwargs.pop("schema", None)
         max_tokens = kwargs.pop("max_tokens", 500)

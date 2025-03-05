@@ -258,5 +258,5 @@ def log_results(scores_path: Path, visualize_path: Path, target_modules: list[st
     plot_line(df, visualize_path)
 
     for score_type in df["score_type"].unique():
-        score_df = df[df["score_type"] == score_type]
+        score_df = df.query(f"score_type == '{score_type}'")
         latent_balanced_score_metrics(score_df, score_type)

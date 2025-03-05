@@ -345,6 +345,7 @@ def _format_record_for_logprob_free_simulation(
             token = END_OF_TEXT_TOKEN_REPLACEMENT
         # We use a weird unicode character here to make it easier to parse the response (can split on "༗\n").
         if include_activations:
+            assert normalized_activations is not None
             response += f"{token}\t{normalized_activations[i]}༗\n"
         else:
             response += f"{token}\t༗\n"

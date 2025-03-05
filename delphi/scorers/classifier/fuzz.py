@@ -61,13 +61,13 @@ class FuzzingScorer(Classifier, Scorer):
 
         return ceil(avg)
 
-    def _prepare(self, record: LatentRecord) -> list[Sample]:
+    def _prepare(self, record: LatentRecord) -> list[Sample]:  # type: ignore
         """
         Prepare and shuffle a list of samples for classification.
         """
         assert len(record.test) > 0, "No test records found"
 
-        n_incorrect = self.mean_n_activations_ceil(record.test)
+        n_incorrect = self.mean_n_activations_ceil(record.test)  # type: ignore
 
         if len(record.not_active) > 0:
             samples = examples_to_samples(
@@ -81,7 +81,7 @@ class FuzzingScorer(Classifier, Scorer):
 
         samples.extend(
             examples_to_samples(
-                record.test,
+                record.test,  # type: ignore
                 n_incorrect=0,
                 highlighted=True,
             )

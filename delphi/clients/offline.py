@@ -91,8 +91,8 @@ class Offline(Client):
                 self.sampling_params.temperature = kwarg["temperature"]
         loop = asyncio.get_running_loop()
         prompts = []
-        if self.statistics:
-            statistics = []
+        statistics = []
+
         for batch in batches:
             prompt = self.tokenizer.apply_chat_template(
                 batch, add_generation_prompt=True, tokenize=True
@@ -101,7 +101,7 @@ class Offline(Client):
             if self.statistics:
                 non_cached_tokens = len(
                     self.tokenizer.apply_chat_template(
-                        batch[-1:], add_generation_prompt=True, tokenize=True
+                        batch[-1:], add_generation_prompt=True, tokenize=True  # type: ignore
                     )
                 )
                 statistics.append(
@@ -114,7 +114,7 @@ class Offline(Client):
         response = await loop.run_in_executor(
             None,
             partial(
-                self.client.generate,
+                self.client.generate,  # type: ignore
                 prompt_token_ids=prompts,
                 sampling_params=self.sampling_params,
                 use_tqdm=False,

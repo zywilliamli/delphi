@@ -90,6 +90,11 @@ def create_neighbours(
             neighbour_calculator = NeighbourCalculator(
                 autoencoder=saes[hookpoint].cuda(), number_of_neighbours=100
             )
+        else:
+            raise ValueError(
+                f"Neighbour type {constructor_cfg.neighbours_type} not supported"
+            )
+
         neighbour_calculator.populate_neighbour_cache(constructor_cfg.neighbours_type)
         neighbour_calculator.save_neighbour_cache(f"{neighbours_path}/{hookpoint}")
 

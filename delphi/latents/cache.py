@@ -279,7 +279,6 @@ class LatentCache:
 
         print(f"Total tokens processed: {total_tokens:,}")
         self.cache.save()
-        del sae_latents
 
     def save(self, save_dir: Path, save_tokens: bool = True):
         """

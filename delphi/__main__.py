@@ -70,8 +70,11 @@ def create_neighbours(
     neighbours_path.mkdir(parents=True, exist_ok=True)
 
     constructor_cfg = run_cfg.constructor_cfg
-    if constructor_cfg.neighbours_type != "co-occurrence":
-        saes = load_sparse_coders(run_cfg, device="cpu")
+    saes = (
+        load_sparse_coders(run_cfg, device="cpu")
+        if constructor_cfg.neighbours_type != "co-occurrence"
+        else {}
+    )
 
     for hookpoint in hookpoints:
 

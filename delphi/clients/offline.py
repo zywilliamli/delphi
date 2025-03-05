@@ -127,10 +127,10 @@ class Offline(Client):
             if self.statistics:
                 statistics[i].num_generated_tokens = len(r.outputs[0].token_ids)
                 # save the statistics to a file, name is a hash of the prompt
-                statistics[i].prompt = batches[i][-1]["content"]
+                statistics[i].prompt = batches[i][-1]["content"]  # type: ignore
                 statistics[i].response = r.outputs[0].text
                 with open(
-                    f"statistics/{hash(batches[i][-1]['content'][-100:])}.json", "w"
+                    f"statistics/{hash(batches[i][-1]['content'][-100:])}.json", "w"  # type: ignore
                 ) as f:
                     json.dump(statistics[i].__dict__, f, indent=4)
             new_response.append(
@@ -142,7 +142,7 @@ class Offline(Client):
             )
         return new_response
 
-    async def generate(self, prompt: Union[str, list[dict[str, str]]], **kwargs) -> str:
+    async def generate(self, prompt: Union[str, list[dict[str, str]]], **kwargs) -> str:  # type: ignore
         """
         Enqueue a request and wait for the result.
         """
@@ -150,7 +150,6 @@ class Offline(Client):
         if self.task is None:
             self.task = asyncio.create_task(self._process_batches())
         await self.queue.put((prompt, future, kwargs))
-        # print(f"Current queue size: {self.queue.qsize()} prompts")
         return await future
 
     def _parse_logprobs(self, response):

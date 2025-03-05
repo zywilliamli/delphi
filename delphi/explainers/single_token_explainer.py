@@ -32,10 +32,21 @@ class SingleTokenExplainer(Explainer):
         highlighted_examples = []
 
         for i, example in enumerate(examples):
-            highlighted_examples.append(self._highlight(i + 1, example))
+            highlighted_examples.append(
+                self._highlight(example.str_tokens, example.activations.tolist())
+            )
 
             if self.activations:
-                highlighted_examples.append(self._join_activations(example))
+                assert (
+                    example.normalized_activations is not None
+                ), "Normalized activations are required for activations in explainer"
+                highlighted_examples.append(
+                    self._join_activations(
+                        example.str_tokens,
+                        example.activations.tolist(),
+                        example.normalized_activations.tolist(),
+                    )
+                )
 
         return build_single_token_prompt(
             examples=highlighted_examples,

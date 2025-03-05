@@ -206,7 +206,7 @@ class LatentRecord:
         Returns:
             str: The formatted string.
         """
-        from IPython.core.display import HTML, display
+        from IPython.core.display import HTML, display  # type: ignore
 
         def _to_string(tokens: list[str], activations: Float[Tensor, "ctx_len"]) -> str:
             """

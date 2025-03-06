@@ -10,7 +10,7 @@ def build_prompt(
     messages = [{"role": "system", "content": SYSTEM}]
 
     user_start = f"Current explanation: {explanation}\n\n"
-    print("Current explanation: ", explanation)
+    #print("Current explanation: ", explanation)
     user_start += f"Normal examples:\n{normal_examples}\n\n"
     #print("Normal examples: ", normal_examples)
     user_start += f"False negatives:\n{false_negatives}\n"

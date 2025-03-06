@@ -170,7 +170,9 @@ class NeighbourCalculator:
 
         # Convert from (batch_id, ctx_pos) to a unique 1D index
 
-        idx_cantor = batch_index * ctx_index + ctx_index
+        idx_cantor = (
+            (batch_index + ctx_index) * (batch_index + ctx_index + 1)
+        ) // 2 + ctx_index
 
         # Sort the indices, because they are not sorted after concatenation
         idx_cantor, idx_cantor_sorted_idx = idx_cantor.sort(dim=0, stable=True)
@@ -227,6 +229,7 @@ class NeighbourCalculator:
                         "Batch size is too small to compute similarity matrix. "
                         "You don't have enough memory."
                     )
+                continue
             done = True
 
         # Compute Jaccard similarity

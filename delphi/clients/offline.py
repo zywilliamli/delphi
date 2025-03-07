@@ -91,8 +91,8 @@ class Offline(Client):
                 self.sampling_params.temperature = kwarg["temperature"]
         loop = asyncio.get_running_loop()
         prompts = []
-        if self.statistics:
-            statistics = []
+        statistics = []
+
         for batch in batches:
             prompt = self.tokenizer.apply_chat_template(
                 batch, add_generation_prompt=True, tokenize=True
@@ -101,7 +101,7 @@ class Offline(Client):
             if self.statistics:
                 non_cached_tokens = len(
                     self.tokenizer.apply_chat_template(
-                        batch[-1:], add_generation_prompt=True, tokenize=True
+                        batch[-1:], add_generation_prompt=True, tokenize=True  # type: ignore
                     )
                 )
                 statistics.append(
@@ -114,7 +114,7 @@ class Offline(Client):
         response = await loop.run_in_executor(
             None,
             partial(
-                self.client.generate,
+                self.client.generate,  # type: ignore
                 prompt_token_ids=prompts,
                 sampling_params=self.sampling_params,
                 use_tqdm=False,
@@ -127,10 +127,10 @@ class Offline(Client):
             if self.statistics:
                 statistics[i].num_generated_tokens = len(r.outputs[0].token_ids)
                 # save the statistics to a file, name is a hash of the prompt
-                statistics[i].prompt = batches[i][-1]["content"]
+                statistics[i].prompt = batches[i][-1]["content"]  # type: ignore
                 statistics[i].response = r.outputs[0].text
                 with open(
-                    f"statistics/{hash(batches[i][-1]['content'][-100:])}.json", "w"
+                    f"statistics/{hash(batches[i][-1]['content'][-100:])}.json", "w"  # type: ignore
                 ) as f:
                     json.dump(statistics[i].__dict__, f, indent=4)
             new_response.append(
@@ -142,7 +142,7 @@ class Offline(Client):
             )
         return new_response
 
-    async def generate(self, prompt: Union[str, list[dict[str, str]]], **kwargs) -> str:
+    async def generate(self, prompt: Union[str, list[dict[str, str]]], **kwargs) -> str:  # type: ignore
         """
         Enqueue a request and wait for the result.
         """
@@ -150,7 +150,6 @@ class Offline(Client):
         if self.task is None:
             self.task = asyncio.create_task(self._process_batches())
         await self.queue.put((prompt, future, kwargs))
-        # print(f"Current queue size: {self.queue.qsize()} prompts")
         return await future
 
     def _parse_logprobs(self, response):

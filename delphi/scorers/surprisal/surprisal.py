@@ -3,10 +3,13 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 import torch
+from simple_parsing import field
 from torch.nn.functional import cross_entropy
 from transformers import PreTrainedTokenizer
 
-from ...latents import Example, LatentRecord
+from delphi.utils import assert_type
+
+from ...latents import ActivatingExample, Example, LatentRecord
 from ..scorer import Scorer, ScorerResult
 from .prompts import BASEPROMPT as base_prompt
 
@@ -19,13 +22,13 @@ class SurprisalOutput:
     distance: float | int
     """Quantile or neighbor distance"""
 
-    no_explanation: list[float] = 0
+    no_explanation: list[float] = field(default_factory=list)
     """What is the surprisal of the model with no explanation"""
 
-    explanation: list[float] = 0
+    explanation: list[float] = field(default_factory=list)
     """What is the surprisal of the model with an explanation"""
 
-    activations: list[float] = 0
+    activations: list[float] = field(default_factory=list)
     """What are the activations of the model"""
 
 
@@ -52,10 +55,10 @@ class SurprisalScorer(Scorer):
         self.batch_size = batch_size
         self.generation_kwargs = generation_kwargs
 
-    async def __call__(
-        self,
-        record: LatentRecord,
-    ) -> list[SurprisalOutput]:
+    async def __call__(  # type: ignore
+        self,  # type: ignore
+        record: LatentRecord,  # type: ignore
+    ) -> ScorerResult:  # type: ignore
         samples = self._prepare(record)
 
         random.shuffle(samples)
@@ -66,7 +69,7 @@ class SurprisalScorer(Scorer):
 
         return ScorerResult(record=record, score=results)
 
-    def _prepare(self, record: LatentRecord) -> list[list[Sample]]:
+    def _prepare(self, record: LatentRecord) -> list[Sample]:
         """
         Prepare and shuffle a list of samples for classification.
         """
@@ -74,6 +77,8 @@ class SurprisalScorer(Scorer):
         defaults = {
             "tokenizer": self.tokenizer,
         }
+
+        assert record.extra_examples is not None, "No extra examples provided"
         samples = examples_to_samples(
             record.extra_examples,
             distance=-1,
@@ -81,6 +86,7 @@ class SurprisalScorer(Scorer):
         )
 
         for i, examples in enumerate(record.test):
+            examples = assert_type(list, examples)
             samples.extend(
                 examples_to_samples(
                     examples,
@@ -181,7 +187,7 @@ class SurprisalScorer(Scorer):
 
 
 def examples_to_samples(
-    examples: list[Example],
+    examples: list[Example] | list[ActivatingExample],
     tokenizer: PreTrainedTokenizer,
     **sample_kwargs,
 ) -> list[Sample]:

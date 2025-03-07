@@ -134,7 +134,7 @@ class LatentRecord:
     train: list[ActivatingExample] = field(default_factory=list)
     """Training examples."""
 
-    test: list[ActivatingExample] = field(default_factory=list)
+    test: list[ActivatingExample] | list[list[Example]] = field(default_factory=list)
     """Test examples."""
 
     neighbours: list[Neighbour] = field(default_factory=list)
@@ -142,6 +142,9 @@ class LatentRecord:
 
     explanation: str = ""
     """Explanation of the latent."""
+
+    extra_examples: Optional[list[Example]] = None
+    """Extra examples to include in the record."""
 
     @property
     def max_activation(self) -> float:
@@ -203,7 +206,7 @@ class LatentRecord:
         Returns:
             str: The formatted string.
         """
-        from IPython.core.display import HTML, display
+        from IPython.core.display import HTML, display  # type: ignore
 
         def _to_string(tokens: list[str], activations: Float[Tensor, "ctx_len"]) -> str:
             """

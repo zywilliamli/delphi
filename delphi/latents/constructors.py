@@ -189,6 +189,9 @@ def constructor(
             seed=seed,
             tokenizer=tokenizer,
         )
+    else:
+        raise ValueError(f"Invalid non-activating source: {source_non_activating}")
+
     record.not_active = non_activating_examples
     return record
 

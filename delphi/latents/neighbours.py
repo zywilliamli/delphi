@@ -181,6 +181,7 @@ class NeighbourCalculator:
         n_tokens = int(idx_cantor.max().item())
 
         token_batch_size = 20_000
+        co_occurrence_matrix = None
         done = False
         while not done:
             try:
@@ -199,7 +200,6 @@ class NeighbourCalculator:
                 co_occurrence_matrix = torch.zeros(
                     (n_latents, n_latents), dtype=torch.int32
                 )
-                # co_occurrence_matrix = co_occurrence_matrix.cuda()
 
                 for start, end in tqdm(
                     zip(batch_boundaries[:-1], batch_boundaries[1:])
@@ -242,6 +242,7 @@ class NeighbourCalculator:
             return jaccard_matrix
 
         # Compute Jaccard similarity matrix
+        assert co_occurrence_matrix is not None, "Co-occurrence matrix is not computed"
         jaccard_matrix = compute_jaccard(co_occurrence_matrix)
 
         # get the indices of the top k neighbours for each feature

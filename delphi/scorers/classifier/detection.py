@@ -42,7 +42,7 @@ class DetectionScorer(Classifier):
     def prompt(self, examples: str, explanation: str) -> list[dict]:
         return prompt(examples, explanation)
 
-    def _prepare(self, record: LatentRecord) -> list[Sample]:
+    def _prepare(self, record: LatentRecord) -> list[Sample]:  # type: ignore
         """
         Prepare and shuffle a list of samples for classification.
         """
@@ -57,7 +57,7 @@ class DetectionScorer(Classifier):
 
         samples.extend(
             examples_to_samples(
-                record.test,
+                record.test,  # type: ignore
             )
         )
 

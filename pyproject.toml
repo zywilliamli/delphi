@@ -30,7 +30,8 @@ dependencies = [
 dev = ["pytest"]
 visualize = [
     "kaleido==0.2.1",
-    "plotly>=5.0.0rc2"
+    "plotly>=5.0.0rc2",
+    "pandas"
 ]
 
 [tool.pyright]

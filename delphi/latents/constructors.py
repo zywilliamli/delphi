@@ -279,7 +279,7 @@ def neighbour_non_activation_windows(
         examples_used = len(token_windows)
         all_examples.extend(
             prepare_non_activating_examples(
-                token_windows, neighbour.distance, tokenizer
+                token_windows, -neighbour.distance, tokenizer
             )
         )
         number_examples += examples_used

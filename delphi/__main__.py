@@ -80,18 +80,18 @@ def create_neighbours(
 
         if constructor_cfg.neighbours_type == "co-occurrence":
             neighbour_calculator = NeighbourCalculator(
-                cache_dir=latents_path / hookpoint, number_of_neighbours=100
+                cache_dir=latents_path / hookpoint, number_of_neighbours=250
             )
 
         elif constructor_cfg.neighbours_type == "decoder_similarity":
 
             neighbour_calculator = NeighbourCalculator(
-                autoencoder=saes[hookpoint].cuda(), number_of_neighbours=100
+                autoencoder=saes[hookpoint].cuda(), number_of_neighbours=250
             )
 
         elif constructor_cfg.neighbours_type == "encoder_similarity":
             neighbour_calculator = NeighbourCalculator(
-                autoencoder=saes[hookpoint].cuda(), number_of_neighbours=100
+                autoencoder=saes[hookpoint].cuda(), number_of_neighbours=250
             )
         else:
             raise ValueError(

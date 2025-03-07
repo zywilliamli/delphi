@@ -288,7 +288,15 @@ def neighbour_non_activation_windows(
         )
         number_examples += examples_used
     if len(all_examples) == 0:
-        print("No examples found")
+        print("No examples found, falling back to random non-activating examples")
+        non_active_indices = not_active_mask.nonzero(as_tuple=False).squeeze()
+    
+        return random_non_activating_windows(
+            available_indices=non_active_indices,
+            reshaped_tokens=reshaped_tokens,
+            n_not_active=n_not_active,
+            tokenizer=tokenizer,
+        )
     return all_examples
 
 

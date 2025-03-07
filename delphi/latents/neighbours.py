@@ -166,8 +166,9 @@ class NeighbourCalculator:
         ctx_index = locations[:, 1]
         latent_index = locations[:, 2]
 
-        n_latents = int(torch.max(latent_index)) + 1
-
+        n_latents = int(latent_index.max().item()) + 1
+        ctx_len = locations[:, 1].max().item() + 1
+        n_batches = locations[:, 0].max().item() + 1
         # Convert from (batch_id, ctx_pos) to a unique 1D index
 
         idx_cantor = (
@@ -178,27 +179,28 @@ class NeighbourCalculator:
         idx_cantor, idx_cantor_sorted_idx = idx_cantor.sort(dim=0, stable=True)
         latent_index = latent_index[idx_cantor_sorted_idx]
 
-        n_tokens = int(idx_cantor.max().item())
-
-        token_batch_size = 20_000
+        token_batch_size = 100_000
         co_occurrence_matrix = None
         done = False
         while not done:
             try:
-                print("Trying with batch size", token_batch_size)
                 # Find indices where idx_cantor crosses each batch boundary
-                bounday_values = torch.arange(
-                    token_batch_size, n_tokens, token_batch_size
+                batch_boundaries = torch.arange(
+                    0, n_batches, token_batch_size // ctx_len
                 )
+                cantor_batch_boundaries = (
+                    (batch_boundaries + ctx_len) * (batch_boundaries + ctx_len + 1)
+                ) // 2 + ctx_len
 
-                batch_boundaries_tensor = torch.searchsorted(idx_cantor, bounday_values)
+                batch_boundaries_tensor = torch.searchsorted(
+                    idx_cantor, cantor_batch_boundaries
+                )
                 batch_boundaries = [0] + batch_boundaries_tensor.tolist()
 
                 if batch_boundaries[-1] != len(idx_cantor):
                     batch_boundaries.append(len(idx_cantor))
-
                 co_occurrence_matrix = torch.zeros(
-                    (n_latents, n_latents), dtype=torch.int32
+                    (n_latents, n_latents), dtype=torch.int64
                 )
 
                 for start, end in tqdm(
@@ -206,7 +208,10 @@ class NeighbourCalculator:
                 ):
                     # get all ind_cantor values between start and start
                     selected_idx_cantor = idx_cantor[start:end]
+                    # shift the indices to start from 0
+                    selected_idx_cantor = selected_idx_cantor - selected_idx_cantor[0]
                     selected_latent_index = latent_index[start:end]
+                    number_positions = int(selected_idx_cantor.max().item()) + 1
 
                     # create a sparse matrix of the selected indices
                     sparse_matrix_indices = torch.stack(
@@ -215,12 +220,16 @@ class NeighbourCalculator:
                     sparse_matrix = torch.sparse_coo_tensor(
                         sparse_matrix_indices,
                         torch.ones(len(selected_latent_index)),
-                        (n_latents, token_batch_size),
+                        (n_latents, number_positions),
+                        check_invariants=True,
                     )
                     sparse_matrix = sparse_matrix.cuda()
                     partial_cooc = (sparse_matrix @ sparse_matrix.T).cpu()
                     co_occurrence_matrix += partial_cooc.int()
+
                     del sparse_matrix, partial_cooc
+                    torch.cuda.empty_cache()
+                done = True
 
             except RuntimeError:  # Out of memory
                 token_batch_size = token_batch_size // 2
@@ -229,8 +238,6 @@ class NeighbourCalculator:
                         "Batch size is too small to compute similarity matrix. "
                         "You don't have enough memory."
                     )
-                continue
-            done = True
 
         # Compute Jaccard similarity
         def compute_jaccard(cooc_matrix):

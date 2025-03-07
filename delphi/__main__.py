@@ -285,7 +285,7 @@ def non_redundant_hookpoints(
     hookpoint_to_sparse_encode: dict[str, Callable] | list[str],
     results_path: Path,
     overwrite: bool,
-):
+) -> dict[str, Callable] | list[str]:
     """
     Returns a list of hookpoints that are not already in the cache.
     """
@@ -307,7 +307,6 @@ def non_redundant_hookpoints(
         ]
     if not non_redundant_hookpoints:
         print(f"Files found in {results_path}, skipping...")
-        return None
     return non_redundant_hookpoints
 
 

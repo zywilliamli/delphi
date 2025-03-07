@@ -1,4 +1,5 @@
 from math import ceil
+from typing import Literal
 
 import torch
 
@@ -22,6 +23,7 @@ class FuzzingScorer(Classifier, Scorer):
         threshold: float = 0.3,
         log_prob: bool = False,
         temperature: float = 0.0,
+        fuzz_type: Literal["default", "hard", "contrastive"] = "default",
         **generation_kwargs,
     ):
         """
@@ -47,7 +49,7 @@ class FuzzingScorer(Classifier, Scorer):
         )
 
         self.threshold = threshold
-
+        self.fuzz_type = fuzz_type
     def prompt(self, examples: str, explanation: str) -> list[dict]:
         return prompt(examples, explanation)
 
@@ -67,17 +69,35 @@ class FuzzingScorer(Classifier, Scorer):
         """
         assert len(record.test) > 0, "No test records found"
 
-        n_incorrect = self.mean_n_activations_ceil(record.test)  # type: ignore
+        n_incorrect = self.mean_n_activations_ceil(record.test) 
 
-        if len(record.not_active) > 0:
+        if self.fuzz_type == "default":
+            # default uses non-activating examples and
+            # randomly highlights n_incorrect tokens
+            if len(record.not_active) > 0:
+                samples = examples_to_samples(
+                    record.not_active,
+                    n_incorrect=n_incorrect,
+                    highlighted=True,
+                )
+            else:
+                samples = []
+        elif self.fuzz_type == "hard":
+            # hard uses activating examples and
+            # highlights non active tokens
             samples = examples_to_samples(
-                record.not_active,
+                record.test,
                 n_incorrect=n_incorrect,
                 highlighted=True,
             )
-
-        else:
-            samples = []
+        elif self.fuzz_type == "contrastive":
+            # contrastive uses non-activating examples and
+            # highlights active tokens of neighbours
+            samples = examples_to_samples(
+                record.not_active,
+                n_incorrect=0,
+                highlighted=True,
+            )
 
         samples.extend(
             examples_to_samples(

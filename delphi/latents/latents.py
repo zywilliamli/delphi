@@ -134,7 +134,7 @@ class LatentRecord:
     train: list[ActivatingExample] = field(default_factory=list)
     """Training examples."""
 
-    test: list[ActivatingExample] | list[list[Example]] = field(default_factory=list)
+    test: list[ActivatingExample] = field(default_factory=list)
     """Test examples."""
 
     neighbours: list[Neighbour] = field(default_factory=list)

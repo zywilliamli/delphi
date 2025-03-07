@@ -16,6 +16,7 @@ from .latents import (
 
 def prepare_non_activating_examples(
     tokens: Float[Tensor, "examples ctx_len"],
+    activations: Float[Tensor, "examples ctx_len"],
     distance: float,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
 ) -> list[NonActivatingExample]:
@@ -29,12 +30,12 @@ def prepare_non_activating_examples(
     return [
         NonActivatingExample(
             tokens=toks,
-            activations=torch.zeros_like(toks),
+            activations=acts,
             normalized_activations=None,
             distance=distance,
             str_tokens=tokenizer.batch_decode(toks),
         )
-        for toks in tokens
+        for toks, acts in zip(tokens, activations)
     ]
 
 
@@ -266,7 +267,7 @@ def neighbour_non_activation_windows(
         # If there are no available indices, skip this neighbour
         if activations.numel() == 0:
             continue
-        token_windows, _ = pool_max_activation_windows(
+        token_windows, token_activations = pool_max_activation_windows(
             activations=activations,
             tokens=reshaped_tokens,
             ctx_indices=available_ctx_indices,
@@ -279,7 +280,10 @@ def neighbour_non_activation_windows(
         examples_used = len(token_windows)
         all_examples.extend(
             prepare_non_activating_examples(
-                token_windows, -neighbour.distance, tokenizer
+                token_windows, 
+                token_activations, #activations of neighbour 
+                -neighbour.distance, 
+                tokenizer
             )
         )
         number_examples += examples_used
@@ -325,6 +329,7 @@ def random_non_activating_windows(
 
     return prepare_non_activating_examples(
         toks,
+        torch.zeros_like(toks), #there is no way to define these activations
         -1.0,
         tokenizer,
     )

@@ -260,12 +260,12 @@ def faiss_non_activation_windows(
 
     # Convert token windows to text for embedding
     non_activating_texts = [
-        " ".join(tokenizer.batch_decode(tokens)) for tokens in non_activating_tokens
+        "".join(tokenizer.batch_decode(tokens)) for tokens in non_activating_tokens
     ]
 
     # Get activating example texts
     activating_texts = [
-        " ".join(example.str_tokens)
+        "".join(example.str_tokens)
         for example in record.examples[: min(10, len(record.examples))]
     ]
 

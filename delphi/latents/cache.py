@@ -17,6 +17,7 @@ from delphi.latents.collect_activations import collect_activations
 location_tensor_shape = Float[Tensor, "batch sequence num_latents"]
 token_tensor_shape = Float[Tensor, "batch sequence"]
 
+
 class Cache:
     """
     The Cache class stores latent locations and activations for modules.
@@ -270,12 +271,16 @@ class LatentCache:
                                 latents
                             )
                             self.cache.add(sae_latents, batch, batch_number, hookpoint)
-                            firing_counts = (sae_latents > 0).sum((0,1))
+                            firing_counts = (sae_latents > 0).sum((0, 1))
                             if self.width is None:
-                                self.hookpoint_firing_counts[hookpoint] = firing_counts.cpu()
+                                self.hookpoint_firing_counts[hookpoint] = (
+                                    firing_counts.cpu()
+                                )
                                 self.width = sae_latents.shape[2]
                             else:
-                                self.hookpoint_firing_counts[hookpoint] += firing_counts.cpu()
+                                self.hookpoint_firing_counts[
+                                    hookpoint
+                                ] += firing_counts.cpu()
 
                 # Update the progress bar
                 pbar.update(1)

@@ -3,8 +3,8 @@ from pathlib import Path
 import numpy as np
 import orjson
 import pandas as pd
-from torch import Tensor
 import torch
+from torch import Tensor
 
 
 def import_plotly():
@@ -178,7 +178,12 @@ def parse_score_file(file_path):
     return df
 
 
-def build_scores_df(path: Path, target_modules: list[str], hookpoint_firing_counts: dict, range: Tensor | None = None):
+def build_scores_df(
+    path: Path,
+    target_modules: list[str],
+    hookpoint_firing_counts: dict,
+    range: Tensor | None = None,
+):
     metrics_cols = [
         "accuracy",
         "probability",
@@ -202,7 +207,14 @@ def build_scores_df(path: Path, target_modules: list[str], hookpoint_firing_coun
     ]
     df_data = {
         col: []
-        for col in ["file_name", "score_type", "latent_idx", "hookpoint_firing_counts", "module"] + metrics_cols
+        for col in [
+            "file_name",
+            "score_type",
+            "latent_idx",
+            "hookpoint_firing_counts",
+            "module",
+        ]
+        + metrics_cols
     }
 
     # Get subdirectories in the scores path
@@ -225,11 +237,12 @@ def build_scores_df(path: Path, target_modules: list[str], hookpoint_firing_coun
                 df_data["file_name"].append(score_file.stem)
                 df_data["score_type"].append(score_type)
                 df_data["latent_idx"].append(latent_idx)
-                df_data["hookpoint_firing_counts"].append(hookpoint_firing_counts[module][latent_idx].item())
+                df_data["hookpoint_firing_counts"].append(
+                    hookpoint_firing_counts[module][latent_idx].item()
+                )
                 df_data["module"].append(module)
                 for col in metrics_cols:
                     df_data[col].append(df.loc[0, col])
-                
 
     df = pd.DataFrame(df_data)
     assert not df.empty
@@ -255,14 +268,18 @@ def plot_line(df: pd.DataFrame, visualize_path: Path):
 
 
 def log_results(scores_path: Path, visualize_path: Path, target_modules: list[str]):
-    hookpoint_firing_counts: dict[str, Tensor] = torch.load(Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt")
+    hookpoint_firing_counts: dict[str, Tensor] = torch.load(
+        Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt"
+    )
     df = build_scores_df(scores_path, target_modules, hookpoint_firing_counts)
 
     # Calculate the number of dead features for each module which will not be in the df
-    num_dead_features = sum([
-        (hookpoint_firing_counts[module] == 0).sum().item()
-        for module in target_modules
-    ])
+    num_dead_features = sum(
+        [
+            (hookpoint_firing_counts[module] == 0).sum().item()
+            for module in target_modules
+        ]
+    )
     print(f"Number of dead features: {num_dead_features}")
 
     plot_line(df, visualize_path)

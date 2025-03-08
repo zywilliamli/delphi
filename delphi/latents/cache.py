@@ -17,7 +17,6 @@ from delphi.latents.collect_activations import collect_activations
 location_tensor_shape = Float[Tensor, "batch sequence num_latents"]
 token_tensor_shape = Float[Tensor, "batch sequence"]
 
-
 class Cache:
     """
     The Cache class stores latent locations and activations for modules.
@@ -198,6 +197,7 @@ class LatentCache:
         self.batch_size = batch_size
         self.width = None
         self.cache = Cache(filters, batch_size=batch_size)
+        self.hookpoint_firing_counts: dict[str, Tensor] = {}
         if filters is not None:
             self.filter_submodules(filters)
 
@@ -270,8 +270,12 @@ class LatentCache:
                                 latents
                             )
                             self.cache.add(sae_latents, batch, batch_number, hookpoint)
+                            firing_counts = (sae_latents > 0).sum((0,1))
                             if self.width is None:
+                                self.hookpoint_firing_counts[hookpoint] = firing_counts.cpu()
                                 self.width = sae_latents.shape[2]
+                            else:
+                                self.hookpoint_firing_counts[hookpoint] += firing_counts.cpu()
 
                 # Update the progress bar
                 pbar.update(1)
@@ -386,3 +390,11 @@ class LatentCache:
                 config_dict = cfg.to_dict()
                 config_dict["model_name"] = model_name
                 json.dump(config_dict, f, indent=4)
+
+    def save_firing_counts(self):
+        """
+        Save the firing counts for the cached latents.
+        """
+        log_path = Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.hookpoint_firing_counts, log_path)

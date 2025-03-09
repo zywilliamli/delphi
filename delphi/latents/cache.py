@@ -388,7 +388,8 @@ class LatentCache:
                 save_file(split_data, output_file)
 
     def generate_statistics_cache(self):
-        """Print statistics (number of dead features, number of single token features)
+        """
+        Print statistics (number of dead features, number of single token features)
         to the console.
         """
         assert self.width is not None, "Width must be set before generating statistics"
@@ -401,7 +402,7 @@ class LatentCache:
                 self.cache.latent_locations[module_path],
                 self.cache.latent_activations[module_path],
                 self.width,
-                verbose=True
+                verbose=True,
             )
 
     def save_config(self, save_dir: Path, cfg: CacheConfig, model_name: str):
@@ -494,9 +495,7 @@ def generate_statistics_cache(
         print(f"Fraction of latents fired more than 10% of the time: {ten_percent:%}")
     # Try to estimate simple feature frequency
     split_indices = torch.cumsum(counts, dim=0)
-    activation_splits = torch.tensor_split(
-        sorted_activations, split_indices[:-1]
-    )
+    activation_splits = torch.tensor_split(sorted_activations, split_indices[:-1])
     token_splits = torch.tensor_split(sorted_tokens, split_indices[:-1])
 
     # This might take a while and we may only care for statistics
@@ -512,16 +511,12 @@ def generate_statistics_cache(
         num_single_token_features += single_token
         maybe_single_token_features += maybe_single_token
 
-    single_token_fraction = (
-        maybe_single_token_features / num_alive
-    )
-    strong_token_fraction = (
-        num_single_token_features / num_alive
-    )
+    single_token_fraction = maybe_single_token_features / num_alive
+    strong_token_fraction = num_single_token_features / num_alive
     if verbose:
         print(f"Fraction of weak token latents: {single_token_fraction:%}")
         print(f"Fraction of strong token latents: {strong_token_fraction:%}")
-    
+
     return CacheStatistics(
         frac_alive=fraction_alive,
         frac_fired_1pct=one_percent,
@@ -543,9 +538,7 @@ def check_single_feature(activation_group, token_group):
     wanted_tokens = sorted_token_group[:num_elements]
 
     # Check how many of them are exactly the same
-    _, unique_counts = torch.unique_consecutive(
-        wanted_tokens, return_counts=True
-    )
+    _, unique_counts = torch.unique_consecutive(wanted_tokens, return_counts=True)
 
     max_count = unique_counts.max()
     maybe_single_token = False
@@ -559,9 +552,7 @@ def check_single_feature(activation_group, token_group):
     top_50_percent = sorted_token_group[:n_top]
     sampled_indices = torch.randperm(top_50_percent.shape[0])[:num_samples]
     sampled_tokens = top_50_percent[sampled_indices]
-    _, unique_counts = torch.unique_consecutive(
-        sampled_tokens, return_counts=True
-    )
+    _, unique_counts = torch.unique_consecutive(sampled_tokens, return_counts=True)
 
     max_count = unique_counts.max()
     if max_count > 0.75 * num_samples:

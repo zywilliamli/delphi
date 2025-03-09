@@ -2,6 +2,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 from typing import Callable
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -371,6 +372,21 @@ class LatentCache:
 
                 save_file(split_data, output_file)
 
+    def generate_statistics_cache(self):
+        """Print statistics (number of dead features, number of single token features) to the console.
+        """
+        print("Feature statistics:")
+        # Token frequency
+        for module_path in self.cache.latent_locations.keys():
+            print(f"# Module: {module_path}")
+            generate_statistics_cache(
+                self.cache.tokens[module_path],
+                self.cache.latent_locations[module_path],
+                self.cache.latent_activations[module_path],
+                self.width,
+                verbose=True
+            )
+
     def save_config(self, save_dir: Path, cfg: CacheConfig, model_name: str):
         """
         Save the configuration for the cached latents.
@@ -387,13 +403,35 @@ class LatentCache:
                 config_dict["model_name"] = model_name
                 json.dump(config_dict, f, indent=4)
 
+
+@dataclass
+class CacheStatistics:
+    frac_alive: float
+    frac_fired_1pct: float
+    frac_fired_10pct: float
+    frac_weak_single_token: float
+    frac_strong_single_token: float
+
+
 @torch.inference_mode()
 def generate_statistics_cache(
     tokens: Int[Tensor, "batch sequence"],
     latent_locations: Int[Tensor, "n_activations 3"],
     activations: Float[Tensor, "n_activations"],
     width: int,
-):
+    verbose: bool = False,
+) -> CacheStatistics:
+    """Generate global statistics for the cache."
+
+    Args:
+        tokens (Int[Tensor, "batch sequence"]): Tokens used to generate the cache.
+        latent_locations (Int[Tensor, "n_activations 3"]): Indices of the latent activations, corresponding to `tokens`.
+        activations (Float[Tensor, "n_activations"]): Activations of the latents, as stored by the cache.
+        width (int): Width of the cache to test.
+        verbose (bool, optional): Print results to stdout. Defaults to False.
+    Returns:
+        CacheStatistics: the statistics
+    """
     total_n_tokens = tokens.shape[0] * tokens.shape[1]
 
     latent_locations, latents = latent_locations[:, :2], latent_locations[:, 2]
@@ -408,18 +446,20 @@ def generate_statistics_cache(
     )
 
     # How many unique latents ever activated on the cached tokens
-    fraction_alive = counts.shape[0] / width
-
-    print(f"Fraction of latents alive: {fraction_alive}")
+    num_alive = counts.shape[0]
+    fraction_alive = num_alive / width
+    if verbose:
+        print(f"Fraction of latents alive: {fraction_alive:%}")
     # Compute densities of latents
     densities = counts / total_n_tokens
 
     # How many fired more than 1% of the time
     one_percent = (densities > 0.01).sum() / width
-    print(f"Fraction of latents fired more than 1% of the time: {one_percent}")
     # How many fired more than 10% of the time
     ten_percent = (densities > 0.1).sum() / width
-    print(f"Fraction of latents fired more than 10% of the time: {ten_percent}")
+    if verbose:
+        print(f"Fraction of latents fired more than 1% of the time: {one_percent:%}")
+        print(f"Fraction of latents fired more than 10% of the time: {ten_percent:%}")
     # Try to estimate simple feature frequency
     split_indices = torch.cumsum(counts, dim=0)
     activation_splits = torch.tensor_split(
@@ -431,27 +471,36 @@ def generate_statistics_cache(
     # but for now we do the full loop
     num_single_token_features = 0
     maybe_single_token_features = 0
-    for latent_idx, activation_group, token_group in zip(
+    for _latent_idx, activation_group, token_group in zip(
         unique_latents, activation_splits, token_splits
     ):
         maybe_single_token, single_token = check_single_feature(
-            latent_idx, activation_group, token_group
+            activation_group, token_group
         )
         num_single_token_features += single_token
         maybe_single_token_features += maybe_single_token
 
     single_token_fraction = (
-        maybe_single_token / width
+        maybe_single_token_features / num_alive
     )
     strong_token_fraction = (
-        single_token / width
+        num_single_token_features / num_alive
     )
-    print(f"Fraction of weak token latents: {single_token_fraction:%}")
-    print(f"Fraction of strong token latents: {strong_token_fraction:%}")
+    if verbose:
+        print(f"Fraction of weak token latents: {single_token_fraction:%}")
+        print(f"Fraction of strong token latents: {strong_token_fraction:%}")
+    
+    return CacheStatistics(
+        frac_alive=fraction_alive,
+        frac_fired_1pct=one_percent,
+        frac_fired_10pct=ten_percent,
+        frac_weak_single_token=single_token_fraction,
+        frac_strong_single_token=strong_token_fraction,
+    )
 
 
 @torch.inference_mode()
-def check_single_feature(latent_idx, activation_group, token_group):
+def check_single_feature(activation_group, token_group):
     sorted_activation_group, sorted_indices = activation_group.sort()
     sorted_token_group = token_group[sorted_indices]
 
@@ -484,8 +533,8 @@ def check_single_feature(latent_idx, activation_group, token_group):
 
     max_count = unique_counts.max()
     if max_count > 0.75 * num_samples:
-        if maybe_single_token:
-            return 1, 0
-    else:
         return 0, 1
-    return 0, 0
+    elif maybe_single_token:
+        return 1, 0
+    else:
+        return 0, 0

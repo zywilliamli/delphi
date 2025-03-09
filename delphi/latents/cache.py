@@ -395,6 +395,7 @@ class LatentCache:
                 config_dict = cfg.to_dict()
                 config_dict["model_name"] = model_name
                 json.dump(config_dict, f, indent=4)
+        self.save_firing_counts()
 
     def save_firing_counts(self):
         """

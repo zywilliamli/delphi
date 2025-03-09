@@ -1,7 +1,6 @@
 import asyncio
 import os
 from functools import partial
-from glob import glob
 from pathlib import Path
 from typing import Callable
 
@@ -27,7 +26,7 @@ from delphi.log.result_analysis import log_results
 from delphi.pipeline import Pipe, Pipeline, process_wrapper
 from delphi.scorers import DetectionScorer, FuzzingScorer
 from delphi.sparse_coders import load_hooks_sparse_coders, load_sparse_coders
-from delphi.utils import load_tokenized_data
+from delphi.utils import assert_type, load_tokenized_data
 
 
 def load_artifacts(run_cfg: RunConfig):
@@ -50,9 +49,13 @@ def load_artifacts(run_cfg: RunConfig):
         token=run_cfg.hf_token,
     )
 
-    hookpoint_to_sparse_encode = load_hooks_sparse_coders(model, run_cfg, compile=True)
+    hookpoint_to_sparse_encode, transcode = load_hooks_sparse_coders(
+        model,
+        run_cfg,
+        compile=True,
+    )
 
-    return run_cfg.hookpoints, hookpoint_to_sparse_encode, model
+    return run_cfg.hookpoints, hookpoint_to_sparse_encode, model, transcode
 
 
 def create_neighbours(
@@ -67,26 +70,34 @@ def create_neighbours(
     neighbours_path.mkdir(parents=True, exist_ok=True)
 
     constructor_cfg = run_cfg.constructor_cfg
-    if constructor_cfg.neighbours_type != "co-occurrence":
-        saes = load_sparse_coders(run_cfg, device="cpu")
+    saes = (
+        load_sparse_coders(run_cfg, device="cpu")
+        if constructor_cfg.neighbours_type != "co-occurrence"
+        else {}
+    )
 
     for hookpoint in hookpoints:
 
         if constructor_cfg.neighbours_type == "co-occurrence":
             neighbour_calculator = NeighbourCalculator(
-                cache_dir=latents_path / hookpoint, number_of_neighbours=100
+                cache_dir=latents_path / hookpoint, number_of_neighbours=250
             )
 
         elif constructor_cfg.neighbours_type == "decoder_similarity":
 
             neighbour_calculator = NeighbourCalculator(
-                autoencoder=saes[hookpoint].cuda(), number_of_neighbours=100
+                autoencoder=saes[hookpoint].cuda(), number_of_neighbours=250
             )
 
         elif constructor_cfg.neighbours_type == "encoder_similarity":
             neighbour_calculator = NeighbourCalculator(
-                autoencoder=saes[hookpoint].cuda(), number_of_neighbours=100
+                autoencoder=saes[hookpoint].cuda(), number_of_neighbours=250
             )
+        else:
+            raise ValueError(
+                f"Neighbour type {constructor_cfg.neighbours_type} not supported"
+            )
+
         neighbour_calculator.populate_neighbour_cache(constructor_cfg.neighbours_type)
         neighbour_calculator.save_neighbour_cache(f"{neighbours_path}/{hookpoint}")
 
@@ -223,6 +234,7 @@ def populate_cache(
     hookpoint_to_sparse_encode: dict[str, Callable],
     latents_path: Path,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
+    transcode: bool,
 ):
     """
     Populates an on-disk cache in `latents_path` with SAE latent activations.
@@ -255,6 +267,7 @@ def populate_cache(
         model,
         hookpoint_to_sparse_encode,
         batch_size=cache_cfg.batch_size,
+        transcode=transcode,
     )
     cache.run(cache_cfg.n_tokens, tokens)
 
@@ -269,6 +282,35 @@ def populate_cache(
     )
 
     cache.save_config(save_dir=latents_path, cfg=cache_cfg, model_name=run_cfg.model)
+
+
+def non_redundant_hookpoints(
+    hookpoint_to_sparse_encode: dict[str, Callable] | list[str],
+    results_path: Path,
+    overwrite: bool,
+) -> dict[str, Callable] | list[str]:
+    """
+    Returns a list of hookpoints that are not already in the cache.
+    """
+    if overwrite:
+        print("Overwriting results from", results_path)
+        return hookpoint_to_sparse_encode
+    in_results_path = [x.name for x in results_path.glob("*")]
+    if isinstance(hookpoint_to_sparse_encode, dict):
+        non_redundant_hookpoints = {
+            k: v
+            for k, v in hookpoint_to_sparse_encode.items()
+            if k not in in_results_path
+        }
+    else:
+        non_redundant_hookpoints = [
+            hookpoint
+            for hookpoint in hookpoint_to_sparse_encode
+            if hookpoint not in in_results_path
+        ]
+    if not non_redundant_hookpoints:
+        print(f"Files found in {results_path}, skipping...")
+    return non_redundant_hookpoints
 
 
 async def run(
@@ -290,53 +332,59 @@ async def run(
 
     latent_range = torch.arange(run_cfg.max_latents) if run_cfg.max_latents else None
 
-    hookpoints, hookpoint_to_sparse_encode, model = load_artifacts(run_cfg)
+    hookpoints, hookpoint_to_sparse_encode, model, transcode = load_artifacts(run_cfg)
     tokenizer = AutoTokenizer.from_pretrained(run_cfg.model, token=run_cfg.hf_token)
 
-    if (
-        not glob(str(latents_path / ".*")) + glob(str(latents_path / "*"))
-        or "cache" in run_cfg.overwrite
-    ):
+    nrh = assert_type(
+        dict,
+        non_redundant_hookpoints(
+            hookpoint_to_sparse_encode, latents_path, "cache" in run_cfg.overwrite
+        ),
+    )
+    if nrh:
         populate_cache(
             run_cfg,
             model,
-            hookpoint_to_sparse_encode,
+            nrh,
             latents_path,
             tokenizer,
+            transcode,
         )
-    else:
-        print(f"Files found in {latents_path}, skipping cache population...")
 
     del model, hookpoint_to_sparse_encode
-    if (
-        run_cfg.constructor_cfg.non_activating_source == "neighbours"
-        and not glob(str(neighbours_path / ".*")) + glob(str(neighbours_path / "*"))
-        or "neighbours" in run_cfg.overwrite
-    ):
-        create_neighbours(
-            run_cfg,
-            latents_path,
-            neighbours_path,
-            hookpoints,
+    if run_cfg.constructor_cfg.non_activating_source == "neighbours":
+        nrh = assert_type(
+            list,
+            non_redundant_hookpoints(
+                hookpoints, neighbours_path, "neighbours" in run_cfg.overwrite
+            ),
         )
+        if nrh:
+            create_neighbours(
+                run_cfg,
+                latents_path,
+                neighbours_path,
+                nrh,
+            )
     else:
-        print(f"Files found in {neighbours_path}, skipping...")
+        print("Skipping neighbour creation")
 
-    if (
-        not glob(str(scores_path / ".*")) + glob(str(scores_path / "*"))
-        or "scores" in run_cfg.overwrite
-    ):
+    nrh = assert_type(
+        list,
+        non_redundant_hookpoints(
+            hookpoints, scores_path, "scores" in run_cfg.overwrite
+        ),
+    )
+    if nrh:
         await process_cache(
             run_cfg,
             latents_path,
             explanations_path,
             scores_path,
-            hookpoints,
+            nrh,
             tokenizer,
             latent_range,
         )
-    else:
-        print(f"Files found in {scores_path}, skipping...")
 
     if run_cfg.verbose:
         log_results(scores_path, visualize_path, run_cfg.hookpoints)

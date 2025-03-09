@@ -107,8 +107,8 @@ def parse_top_logprobs(top_logprobs: dict[str, float]) -> OrderedDict[int, float
     """
     probabilities_by_distribution_value = OrderedDict()
     for token, contents in top_logprobs.items():
-        logprob = contents.logprob
-        decoded_token = contents.decoded_token
+        logprob = contents.logprob  # type: ignore
+        decoded_token = contents.decoded_token  # type: ignore
         if decoded_token in VALID_ACTIVATION_TOKENS:
             token_as_int = int(decoded_token)
             probabilities_by_distribution_value[token_as_int] = np.exp(logprob)
@@ -134,7 +134,7 @@ def compute_predicted_activation_stats_for_token(
 
 
 def parse_simulation_response(
-    response: dict[str, Any],
+    response: Any,
     tokenized_prompt: list[int],
     tab_token: int,
     tokens: Sequence[str],
@@ -250,11 +250,11 @@ class ExplanationNeuronSimulator(NeuronSimulator):
         else:
             assert isinstance(prompt, str)
 
-        response = await self.client.generate(prompt, **sampling_params)
-        tokenized_prompt = self.client.tokenizer.apply_chat_template(
+        response = await self.client.generate(prompt, **sampling_params)  # type: ignore
+        tokenized_prompt = self.client.tokenizer.apply_chat_template(  # type: ignore
             prompt, add_generation_prompt=True
         )
-        tab_token = self.client.tokenizer.encode("\t")[1]
+        tab_token = self.client.tokenizer.encode("\t")[1]  # type: ignore
         logger.debug("response in score_explanation_by_activations is %s", response)
         try:
             result = parse_simulation_response(
@@ -287,7 +287,7 @@ class ExplanationNeuronSimulator(NeuronSimulator):
         # Consider reconciling them.
         prompt_builder = PromptBuilder()
         prompt_builder.add_message(
-            "system",
+            "system",  # type: ignore
             """We're studying neurons in a neural network.
 Each neuron looks for some particular thing in a short document.
 Look at summary of what the neuron does, and try to predict how it will fire on each token.
@@ -299,7 +299,7 @@ The activation format is token<tab>activation, activations go from 0 to 10, "unk
         few_shot_examples = self.few_shot_example_set.get_examples()
         for i, example in enumerate(few_shot_examples):
             prompt_builder.add_message(
-                "user",
+                "user",  # type: ignore
                 f"\n\nNeuron {i + 1}\nExplanation of neuron {i + 1} behavior: {EXPLANATION_PREFIX}"
                 f"{example.explanation}",
             )
@@ -309,17 +309,17 @@ The activation format is token<tab>activation, activations go from 0 to 10, "unk
                 start_indices=example.first_revealed_activation_indices,
             )
             prompt_builder.add_message(
-                "assistant", f"\nActivations: {formatted_activation_records}\n"
+                "assistant", f"\nActivations: {formatted_activation_records}\n"  # type: ignore
             )
 
         prompt_builder.add_message(
-            "user",
+            "user",  # type: ignore
             f"\n\nNeuron {len(few_shot_examples) + 1}\nExplanation of neuron "
             f"{len(few_shot_examples) + 1} behavior: {EXPLANATION_PREFIX} "
             f"{self.explanation.strip()}",
         )
         prompt_builder.add_message(
-            "assistant",
+            "assistant",  # type: ignore
             f"\nActivations: {format_sequences_for_simulation([tokens])}",
         )
         return prompt_builder.build(self.prompt_format)
@@ -331,6 +331,7 @@ def _format_record_for_logprob_free_simulation(
     max_activation: Optional[float] = None,
 ) -> str:
     response = ""
+    normalized_activations = None
     if include_activations:
         assert max_activation is not None
         assert len(activation_record.tokens) == len(
@@ -339,12 +340,14 @@ def _format_record_for_logprob_free_simulation(
         normalized_activations = normalize_activations(
             activation_record.activations, max_activation=max_activation
         )
+
     for i, token in enumerate(activation_record.tokens):
         # Edge Case #3: End tokens confuse the chat-based simulator. Replace end token with "not end token".
         if token.strip() == END_OF_TEXT_TOKEN:
             token = END_OF_TEXT_TOKEN_REPLACEMENT
         # We use a weird unicode character here to make it easier to parse the response (can split on "༗\n").
         if include_activations:
+            assert normalized_activations is not None
             response += f"{token}\t{normalized_activations[i]}༗\n"
         else:
             response += f"{token}\t༗\n"
@@ -595,7 +598,7 @@ class LogprobFreeExplanationTokenSimulator(NeuronSimulator):
 
         result = SequenceSimulation(
             activation_scale=ActivationScale.SIMULATED_NORMALIZED_ACTIVATIONS,
-            expected_activations=predicted_activations,
+            expected_activations=predicted_activations,  # type: ignore
             # Since the predicted activation is just a sampled token, we don't have a distribution.
             distribution_values=[],
             distribution_probabilities=[],
@@ -614,7 +617,7 @@ class LogprobFreeExplanationTokenSimulator(NeuronSimulator):
         assert explanation != ""
         prompt_builder = PromptBuilder()
         prompt_builder.add_message(
-            "system",
+            "system",  # type: ignore
             """We're studying neurons in a neural network. Each neuron looks for certain things in a short document. Your task is to read the explanation of what the neuron does, and predict the neuron's activations for each token in the document.
 
 For each document, you will see the full text of the document, then the tokens in the document with the activation left blank. You will print, in valid json, the exact same tokens verbatim, but with the activation values filled in according to the explanation. Pay special attention to the explanation's description of the context and order of tokens or words.
@@ -638,7 +641,7 @@ Fill out the activation values with integer values from 0 to 10. Don't use negat
             }
             """
             prompt_builder.add_message(
-                "user",
+                "user",  # type: ignore
                 _format_record_for_logprob_free_simulation_json(
                     explanation=example.explanation,
                     activation_record=example.activation_records[0],
@@ -658,7 +661,7 @@ Fill out the activation values with integer values from 0 to 10. Don't use negat
             }
             """
             prompt_builder.add_message(
-                "assistant",
+                "assistant",  # type: ignore
                 _format_record_for_logprob_free_simulation_json(
                     explanation=example.explanation,
                     activation_record=example.activation_records[0],
@@ -678,10 +681,10 @@ Fill out the activation values with integer values from 0 to 10. Don't use negat
         }
         """
         prompt_builder.add_message(
-            "user",
+            "user",  # type: ignore
             _format_record_for_logprob_free_simulation_json(
                 explanation=explanation,
-                activation_record=ActivationRecord(tokens=tokens, activations=[]),
+                activation_record=ActivationRecord(tokens=tokens, activations=[]),  # type: ignore
                 include_activations=False,
             ),
         )
@@ -698,7 +701,7 @@ Fill out the activation values with integer values from 0 to 10. Don't use negat
         assert explanation != ""
         prompt_builder = PromptBuilder()
         prompt_builder.add_message(
-            "system",
+            "system",  # type: ignore
             """We're studying neurons in a neural network. Each neuron looks for some particular thing in a short document. Look at an explanation of what the neuron does, and try to predict its activations on a particular token.
 
 The activation format is token<tab>activation, and activations range from 0 to 10. Most activations will be 0.
@@ -716,7 +719,7 @@ For each sequence, you will see the tokens in the sequence where the activations
                 example.activation_records[0], include_activations=False
             )
             prompt_builder.add_message(
-                "user",
+                "user",  # type: ignore
                 f"Neuron {i + 1}\nExplanation of neuron {i + 1} behavior: {EXPLANATION_PREFIX} "
                 f"{example.explanation}\n\n"
                 f"Sequence 1 Tokens without Activations:\n{tokens_without_activations}\n\n"
@@ -728,7 +731,7 @@ For each sequence, you will see the tokens in the sequence where the activations
                 max_activation=few_shot_example_max_activation,
             )
             prompt_builder.add_message(
-                "assistant",
+                "assistant",  # type: ignore
                 f"{tokens_with_activations}\n\n",
             )
 
@@ -737,7 +740,7 @@ For each sequence, you will see the tokens in the sequence where the activations
                     record, include_activations=False
                 )
                 prompt_builder.add_message(
-                    "user",
+                    "user",  # type: ignore
                     f"Sequence {record_index + 2} Tokens without Activations:\n{tks_without}\n\n"
                     f"Sequence {record_index + 2} Tokens with Activations:\n",
                 )
@@ -747,16 +750,16 @@ For each sequence, you will see the tokens in the sequence where the activations
                     max_activation=few_shot_example_max_activation,
                 )
                 prompt_builder.add_message(
-                    "assistant",
+                    "assistant",  # type: ignore
                     f"{tokens_with_activations}\n\n",
                 )
 
         neuron_index = len(few_shot_examples) + 1
         tokens_without_activations = _format_record_for_logprob_free_simulation(
-            ActivationRecord(tokens=tokens, activations=[]), include_activations=False
+            ActivationRecord(tokens=tokens, activations=[]), include_activations=False  # type: ignore
         )
         prompt_builder.add_message(
-            "user",
+            "user",  # type: ignore
             f"Neuron {neuron_index}\nExplanation of neuron {neuron_index} behavior: {EXPLANATION_PREFIX} "
             f"{explanation}\n\n"
             f"Sequence 1 Tokens without Activations:\n{tokens_without_activations}\n\n"

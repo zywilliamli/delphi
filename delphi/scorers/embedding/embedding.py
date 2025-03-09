@@ -42,22 +42,22 @@ class EmbeddingScorer(Scorer):
         self.tokenizer = tokenizer
         self.generation_kwargs = generation_kwargs
 
-    async def __call__(
-        self,
-        record: LatentRecord,
-    ) -> list[EmbeddingOutput]:
+    async def __call__(  # type: ignore
+        self,  # type: ignore
+        record: LatentRecord,  # type: ignore
+    ) -> ScorerResult:  # type: ignore
         samples = self._prepare(record)
 
         random.shuffle(samples)
         results = self._query(
             record.explanation,
-            samples,
+            samples,  # type: ignore
         )
 
         return ScorerResult(record=record, score=results)
 
     def call_sync(self, record: LatentRecord) -> list[EmbeddingOutput]:
-        return asyncio.run(self.__call__(record))
+        return asyncio.run(self.__call__(record))  # type: ignore
 
     def _prepare(self, record: LatentRecord) -> list[list[Sample]]:
         """
@@ -68,21 +68,21 @@ class EmbeddingScorer(Scorer):
             "tokenizer": self.tokenizer,
         }
         samples = examples_to_samples(
-            record.extra_examples,
+            record.extra_examples,  # type: ignore
             distance=-1,
-            **defaults,
+            **defaults,  # type: ignore
         )
 
         for i, examples in enumerate(record.test):
             samples.extend(
                 examples_to_samples(
-                    examples,
+                    examples,  # type: ignore
                     distance=i + 1,
-                    **defaults,
+                    **defaults,  # type: ignore
                 )
             )
 
-        return samples
+        return samples  # type: ignore
 
     def _query(self, explanation: str, samples: list[Sample]) -> list[EmbeddingOutput]:
         explanation_string = (

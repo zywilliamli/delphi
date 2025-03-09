@@ -2,19 +2,20 @@ from typing import Callable
 
 import torch
 import torch.nn as nn
+from sparsify import SparseCoder
 from transformers import PreTrainedModel
 
 from delphi.config import RunConfig
 
 from .custom.gemmascope import load_gemma_autoencoders
-from .load_sparsify import Sae, load_sparsify_hooks, load_sparsify_sparse_coders
+from .load_sparsify import load_sparsify_hooks, load_sparsify_sparse_coders
 
 
 def load_hooks_sparse_coders(
     model: PreTrainedModel,
     run_cfg: RunConfig,
     compile: bool = False,
-) -> dict[str, Callable]:
+) -> tuple[dict[str, Callable], bool]:
     """
     Load sparse coders for specified hookpoints.
 
@@ -28,7 +29,7 @@ def load_hooks_sparse_coders(
 
     # Add SAE hooks to the model
     if "gemma" not in run_cfg.sparse_model:
-        hookpoint_to_sparse_encode = load_sparsify_hooks(
+        hookpoint_to_sparse_encode, transcode = load_sparsify_hooks(
             model,
             run_cfg.sparse_model,
             run_cfg.hookpoints,
@@ -63,17 +64,18 @@ def load_hooks_sparse_coders(
             dtype=model.dtype,
             device=model.device,
         )
+        transcode = False
     # throw an error if the dictionary is empty
     if not hookpoint_to_sparse_encode:
         raise ValueError("No sparse coders loaded")
-    return hookpoint_to_sparse_encode
+    return hookpoint_to_sparse_encode, transcode
 
 
 def load_sparse_coders(
     run_cfg: RunConfig,
     device: str | torch.device,
     compile: bool = False,
-) -> dict[str, nn.Module] | dict[str, Sae]:
+) -> dict[str, nn.Module] | dict[str, SparseCoder]:
     """
     Load sparse coders for specified hookpoints.
 

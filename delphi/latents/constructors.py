@@ -189,6 +189,9 @@ def constructor(
             seed=seed,
             tokenizer=tokenizer,
         )
+    else:
+        raise ValueError(f"Invalid non-activating source: {source_non_activating}")
+
     record.not_active = non_activating_examples
     return record
 
@@ -212,7 +215,9 @@ def neighbour_non_activation_windows(
         tokens (TensorType["batch", "seq"]): The input tokens.
         all_data (AllData): The all data containing activations and locations.
         ctx_len (int): The context length.
-        n_random (int): The number of random examples to generate.
+        n_not_active (int): The number of non-activating examples per latent.
+        tokenizer (PreTrainedTokenizer | PreTrainedTokenizerFast): The tokenizer.
+        seed (int): The random seed.
     """
     torch.manual_seed(seed)
     if n_not_active == 0:
@@ -274,7 +279,7 @@ def neighbour_non_activation_windows(
         examples_used = len(token_windows)
         all_examples.extend(
             prepare_non_activating_examples(
-                token_windows, neighbour.distance, tokenizer
+                token_windows, -neighbour.distance, tokenizer
             )
         )
         number_examples += examples_used

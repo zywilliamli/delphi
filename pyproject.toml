@@ -22,11 +22,17 @@ dependencies = [
     "flask",
     "vllm",
     "aiofiles",
-    "sentence_transformers"
+    "sentence_transformers",
+    "anyio>=4.8.0"
 ]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+visualize = [
+    "kaleido==0.2.1",
+    "plotly>=5.0.0rc2",
+    "pandas"
+]
 
 [tool.pyright]
 include = ["delphi*"]

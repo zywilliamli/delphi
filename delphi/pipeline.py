@@ -81,7 +81,9 @@ class Pipeline:
             loader (Callable): The loader to be executed first.
             *pipes (list[Pipe]): Pipes to be executed in the pipeline.
         """
-        self.pipes = [loader] + list(pipes)
+
+        self.loader = loader
+        self.pipes = pipes
 
     async def run(self, max_concurrent: int = 10) -> list[Any]:
         """
@@ -111,13 +113,13 @@ class Pipeline:
                 process_and_update(item, semaphore, number_of_items)
             )
             tasks.add(task)
-            task.add_done_callback(tasks.discard)
 
             if len(tasks) >= max_concurrent:
                 done, pending = await asyncio.wait(
                     tasks, return_when=asyncio.FIRST_COMPLETED
                 )
                 results.extend(task.result() for task in done)
+                tasks = pending
 
         if tasks:
             done, _ = await asyncio.wait(tasks)
@@ -136,13 +138,11 @@ class Pipeline:
         Raises:
             TypeError: If the first pipe is neither an async iterable nor a callable.
         """
-        first_pipe = self.pipes[0]
-
-        if isinstance(first_pipe, AsyncIterable):
-            async for item in first_pipe:
+        if isinstance(self.loader, AsyncIterable):
+            async for item in self.loader:
                 yield item
-        elif callable(first_pipe):
-            for item in first_pipe():
+        elif callable(self.loader):
+            for item in self.loader():
                 yield item
                 await asyncio.sleep(0)  # Allow other coroutines to run
         else:
@@ -164,6 +164,6 @@ class Pipeline:
         """
         async with semaphore:
             result = item
-            for pipe in self.pipes[1:]:
+            for pipe in self.pipes:
                 result = await pipe(result)
         return result

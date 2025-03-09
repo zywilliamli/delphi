@@ -78,7 +78,7 @@ async def _simulate_and_score_sequence(
     scored_sequence_simulation = ScoredSequenceSimulation(
         distance=quantile,
         simulation=simulation,
-        true_activations=activations.activations.tolist(),
+        true_activations=activations.activations.tolist(),  # type: ignore
         ev_correlation_score=score_from_simulation(
             activations, simulation, correlation_score
         ),
@@ -135,14 +135,14 @@ def aggregate_scored_sequence_simulations(
     rsquared_score = 0
     absolute_dev_explained_score = 0
 
-    scored_sequence_simulations = [default(s) for s in scored_sequence_simulations]
+    scored_sequence_simulations = [default(s) for s in scored_sequence_simulations]  # type: ignore
 
     ev_correlation_score = fix_nan(ev_correlation_score)
 
     return ScoredSimulation(
         distance=distance,
         scored_sequence_simulations=scored_sequence_simulations,
-        ev_correlation_score=ev_correlation_score,
+        ev_correlation_score=ev_correlation_score,  # type: ignore
         rsquared_score=float(rsquared_score),
         absolute_dev_explained_score=float(absolute_dev_explained_score),
     )
@@ -164,7 +164,7 @@ async def simulate_and_score(
                     _simulate_and_score_sequence(
                         simulator, activation_record, quantile + 1
                     )
-                    for activation_record in activation_quantile
+                    for activation_record in activation_quantile  # type: ignore
                 ]
             )
             for quantile, activation_quantile in enumerate(activation_records)
@@ -173,10 +173,12 @@ async def simulate_and_score(
     if len(non_activation_records) > 0:
         non_activating_scored_seq_simulations = await asyncio.gather(
             *[
-                _simulate_and_score_sequence(simulator, non_activation_record[0], -1)
+                _simulate_and_score_sequence(simulator, non_activation_record[0], -1)  # type: ignore
                 for non_activation_record in non_activation_records
             ]
         )
+    else:
+        non_activating_scored_seq_simulations = []
 
     # with open('test.txt', 'w') as f:
     #     f.write(str(scored_sequence_simulations))
@@ -196,4 +198,4 @@ async def simulate_and_score(
     if len(non_activation_records) > 0:
         all_data = all_activated + non_activating_scored_seq_simulations
         values.append(aggregate_scored_sequence_simulations(all_data, 0))
-    return values
+    return values  # type: ignore

@@ -3,19 +3,21 @@ from pathlib import Path
 from typing import Callable
 
 import torch
-from sparsify import Sae
+from sparsify import SparseCoder
 from torch import Tensor
 from transformers import PreTrainedModel
 
 
-def sae_dense_latents(x: Tensor, sae: Sae) -> Tensor:
+def sae_dense_latents(x: Tensor, sae: SparseCoder) -> Tensor:
     """Run `sae` on `x`, yielding the dense activations."""
     pre_acts = sae.pre_acts(x)
     acts, indices = sae.select_topk(pre_acts)
     return torch.zeros_like(pre_acts).scatter_(-1, indices, acts)
 
 
-def resolve_path(model: PreTrainedModel, path_segments: list[str]) -> list[str] | None:
+def resolve_path(
+    model: PreTrainedModel | torch.nn.Module, path_segments: list[str]
+) -> list[str] | None:
     """Attempt to resolve the path segments to the model in the case where it
     has been wrapped (e.g. by a LanguageModel, causal model, or classifier)."""
     # If the first segment is a valid attribute, return the path segments
@@ -45,7 +47,7 @@ def load_sparsify_sparse_coders(
     hookpoints: list[str],
     device: str | torch.device,
     compile: bool = False,
-) -> dict[str, Sae]:
+) -> dict[str, SparseCoder]:
     """
     Load sparsify sparse coders for specified hookpoints.
 
@@ -67,7 +69,7 @@ def load_sparsify_sparse_coders(
     name_path = Path(name)
     if name_path.exists():
         for hookpoint in hookpoints:
-            sparse_model_dict[hookpoint] = Sae.load_from_disk(
+            sparse_model_dict[hookpoint] = SparseCoder.load_from_disk(
                 name_path / hookpoint, device=device
             )
             if compile:
@@ -76,7 +78,7 @@ def load_sparsify_sparse_coders(
                 )
     else:
         # Load on CPU first to not run out of memory
-        sparse_models = Sae.load_many(name, device="cpu")
+        sparse_models = SparseCoder.load_many(name, device="cpu")
         for hookpoint in hookpoints:
             sparse_model_dict[hookpoint] = sparse_models[hookpoint].to(device)
             if compile:
@@ -94,7 +96,7 @@ def load_sparsify_hooks(
     hookpoints: list[str],
     device: str | torch.device | None = None,
     compile: bool = False,
-) -> dict[str, Callable]:
+) -> tuple[dict[str, Callable], bool]:
     """
     Load the encode functions for sparsify sparse coders on specified hookpoints.
 
@@ -118,6 +120,7 @@ def load_sparsify_hooks(
         compile,
     )
     hookpoint_to_sparse_encode = {}
+    transcode = False
     for hookpoint, sparse_model in sparse_model_dict.items():
         print(f"Resolving path for hookpoint: {hookpoint}")
         path_segments = resolve_path(model, hookpoint.split("."))
@@ -127,5 +130,11 @@ def load_sparsify_hooks(
         hookpoint_to_sparse_encode[".".join(path_segments)] = partial(
             sae_dense_latents, sae=sparse_model
         )
-
-    return hookpoint_to_sparse_encode
+        # We only need to check if one of the sparse models is a transcoder
+        if hasattr(sparse_model.cfg, "transcode"):
+            if sparse_model.cfg.transcode:
+                transcode = True
+        if hasattr(sparse_model.cfg, "skip_connection"):
+            if sparse_model.cfg.skip_connection:
+                transcode = True
+    return hookpoint_to_sparse_encode, transcode

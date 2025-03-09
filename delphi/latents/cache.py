@@ -5,7 +5,7 @@ from typing import Callable
 
 import numpy as np
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from safetensors.numpy import save_file
 from torch import Tensor
 from tqdm import tqdm
@@ -387,99 +387,105 @@ class LatentCache:
                 config_dict["model_name"] = model_name
                 json.dump(config_dict, f, indent=4)
 
-    def generate_statistics_cache(self):
+@torch.inference_mode()
+def generate_statistics_cache(
+    tokens: Int[Tensor, "batch sequence"],
+    latent_locations: Int[Tensor, "n_activations 3"],
+    activations: Float[Tensor, "n_activations"],
+    width: int,
+):
+    total_n_tokens = tokens.shape[0] * tokens.shape[1]
 
-        # Token frequency
-        for module_path in self.cache.latent_locations.keys():
+    latent_locations, latents = latent_locations[:, :2], latent_locations[:, 2]
 
-            tokens = self.cache.tokens[module_path]
-            total_n_tokens = tokens.shape[0] * tokens.shape[1]
+    # torch always sorts for unique, so we might as well do it
+    sorted_latents, latent_indices = latents.sort()
+    sorted_activations = activations[latent_indices]
+    sorted_tokens = tokens[latent_locations[latent_indices]]
 
-            latent_locations = self.cache.latent_locations[module_path][:, :2]
+    unique_latents, counts = torch.unique_consecutive(
+        sorted_latents, return_counts=True
+    )
 
-            latents = self.cache.latent_locations[module_path][:, 2]
-            activations = self.cache.latent_activations[module_path]
+    # How many unique latents ever activated on the cached tokens
+    fraction_alive = counts.shape[0] / width
 
-            # torch always sorts for unique, so we might as well do it
-            sorted_latents, latent_indices = latents.sort()
-            sorted_activations = activations[latent_indices]
-            sorted_tokens = tokens[latent_locations[latent_indices]]
+    print(f"Fraction of latents alive: {fraction_alive}")
+    # Compute densities of latents
+    densities = counts / total_n_tokens
 
-            unique_latents, counts = torch.unique_consecutive(
-                sorted_latents, return_counts=True
-            )
+    # How many fired more than 1% of the time
+    one_percent = (densities > 0.01).sum() / width
+    print(f"Fraction of latents fired more than 1% of the time: {one_percent}")
+    # How many fired more than 10% of the time
+    ten_percent = (densities > 0.1).sum() / width
+    print(f"Fraction of latents fired more than 10% of the time: {ten_percent}")
+    # Try to estimate simple feature frequency
+    split_indices = torch.cumsum(counts, dim=0)
+    activation_splits = torch.tensor_split(
+        sorted_activations, split_indices[:-1]
+    )
+    token_splits = torch.tensor_split(sorted_tokens, split_indices[:-1])
 
-            # How many unique latents ever activated on the cached tokens
-            fraction_alive = counts.shape[0] / self.width
+    # This might take a while and we may only care for statistics
+    # but for now we do the full loop
+    num_single_token_features = 0
+    maybe_single_token_features = 0
+    for latent_idx, activation_group, token_group in zip(
+        unique_latents, activation_splits, token_splits
+    ):
+        maybe_single_token, single_token = check_single_feature(
+            latent_idx, activation_group, token_group
+        )
+        num_single_token_features += single_token
+        maybe_single_token_features += maybe_single_token
 
-            print(f"Fraction of latents alive: {fraction_alive}")
-            # Compute densities of latents
-            densities = counts / total_n_tokens
+    single_token_fraction = (
+        maybe_single_token / width
+    )
+    strong_token_fraction = (
+        single_token / width
+    )
+    print(f"Fraction of weak token latents: {single_token_fraction:%}")
+    print(f"Fraction of strong token latents: {strong_token_fraction:%}")
 
-            # How many fired more than 1% of the time
-            one_percent = (densities > 0.01).sum() / self.width
-            print(f"Fraction of latents fired more than 1% of the time: {one_percent}")
-            # How many fired more than 10% of the time
-            ten_percent = (densities > 0.1).sum() / self.width
-            print(f"Fraction of latents fired more than 10% of the time: {ten_percent}")
-            # Try to estimate simple feature frequency
-            split_indices = torch.cumsum(counts, dim=0)
-            activation_splits = torch.tensor_split(
-                sorted_activations, split_indices[:-1]
-            )
-            token_splits = torch.tensor_split(sorted_tokens, split_indices[:-1])
 
-            # This might take a while and we may only care for statistics
-            # but for now we do the full loop
-            num_single_token_features = 0
-            maybe_single_token_features = 0
-            for latent_idx, activation_group, token_group in zip(
-                unique_latents, activation_splits, token_splits
-            ):
-                sorted_activation_group, sorted_indices = activation_group.sort()
-                sorted_token_group = token_group[sorted_indices]
+@torch.inference_mode()
+def check_single_feature(latent_idx, activation_group, token_group):
+    sorted_activation_group, sorted_indices = activation_group.sort()
+    sorted_token_group = token_group[sorted_indices]
 
-                number_activations = sorted_activation_group.shape[0]
-                # Get the first 50 elements if possible
-                num_elements = min(50, number_activations)
+    number_activations = sorted_activation_group.shape[0]
+    # Get the first 50 elements if possible
+    num_elements = min(50, number_activations)
 
-                wanted_tokens = sorted_token_group[:num_elements]
+    wanted_tokens = sorted_token_group[:num_elements]
 
-                # Check how many of them are exactly the same
-                _, unique_counts = torch.unique_consecutive(
-                    wanted_tokens, return_counts=True
-                )
+    # Check how many of them are exactly the same
+    _, unique_counts = torch.unique_consecutive(
+        wanted_tokens, return_counts=True
+    )
 
-                max_count = unique_counts.max()
-                maybe_single_token = False
-                if max_count > 0.9 * num_elements:
-                    # Single token feature
-                    maybe_single_token = True
+    max_count = unique_counts.max()
+    maybe_single_token = False
+    if max_count > 0.9 * num_elements:
+        # Single token feature
+        maybe_single_token = True
 
-                # Randomly sample 100 activations from the top 50%
-                num_samples = min(100, number_activations / 2)
-                top_50_percent = sorted_token_group[: number_activations // 2]
-                sampled_indices = torch.randperm(top_50_percent.shape[0])[:num_samples]
-                sampled_tokens = top_50_percent[sampled_indices]
-                _, unique_counts = torch.unique_consecutive(
-                    sampled_tokens, return_counts=True
-                )
+    # Randomly sample 100 activations from the top 50%
+    n_top = max(1, int(number_activations * 0.5))
+    num_samples = min(100, n_top)
+    top_50_percent = sorted_token_group[:n_top]
+    sampled_indices = torch.randperm(top_50_percent.shape[0])[:num_samples]
+    sampled_tokens = top_50_percent[sampled_indices]
+    _, unique_counts = torch.unique_consecutive(
+        sampled_tokens, return_counts=True
+    )
 
-                max_count = unique_counts.max()
-                if max_count > 0.75 * num_samples:
-                    if maybe_single_token:
-                        num_single_token_features += 1
-                else:
-                    maybe_single_token_features += 1
-
-            single_token_fraction = (
-                num_single_token_features / maybe_single_token_features
-            )
-            strong_token_fraction = (
-                maybe_single_token_features / num_single_token_features
-            )
-            print(f"Fraction of weak token latents: {single_token_fraction}")
-            print(f"Fraction of strong token latents: {strong_token_fraction}")
-
-        pass
-        #
+    max_count = unique_counts.max()
+    if max_count > 0.75 * num_samples:
+        if maybe_single_token:
+            return 1, 0
+    else:
+        return 0, 1
+    return 0, 0

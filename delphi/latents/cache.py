@@ -1,8 +1,8 @@
 import json
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
-from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -388,8 +388,10 @@ class LatentCache:
                 save_file(split_data, output_file)
 
     def generate_statistics_cache(self):
-        """Print statistics (number of dead features, number of single token features) to the console.
+        """Print statistics (number of dead features, number of single token features)
+        to the console.
         """
+        assert self.width is not None, "Width must be set before generating statistics"
         print("Feature statistics:")
         # Token frequency
         for module_path in self.cache.latent_locations.keys():
@@ -453,8 +455,10 @@ def generate_statistics_cache(
 
     Args:
         tokens (Int[Tensor, "batch sequence"]): Tokens used to generate the cache.
-        latent_locations (Int[Tensor, "n_activations 3"]): Indices of the latent activations, corresponding to `tokens`.
-        activations (Float[Tensor, "n_activations"]): Activations of the latents, as stored by the cache.
+        latent_locations (Int[Tensor, "n_activations 3"]): Indices of the latent
+            activations, corresponding to `tokens`.
+        activations (Float[Tensor, "n_activations"]): Activations of the latents,
+            as stored by the cache.
         width (int): Width of the cache to test.
         verbose (bool, optional): Print results to stdout. Defaults to False.
     Returns:

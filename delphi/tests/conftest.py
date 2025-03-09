@@ -97,7 +97,8 @@ def cache_setup(tmp_path_factory, mock_dataset: torch.Tensor, model: PreTrainedM
 
     cache.save_config(temp_dir, cache_cfg, "EleutherAI/pythia-70m")
     hookpoint_firing_counts = torch.load(
-        Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt"
+        Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt",
+        weights_only=True
     )
     return {
         "cache": cache,
@@ -146,7 +147,7 @@ def test_hookpoint_firing_counts_persistence(cache_setup):
     firing_counts_path = Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt"
     assert firing_counts_path.exists(), "Firing counts file should exist after saving"
 
-    loaded_counts = torch.load(firing_counts_path)
+    loaded_counts = torch.load(firing_counts_path, weights_only=True)
     assert isinstance(
         loaded_counts, dict
     ), "Loaded firing counts should be a dictionary"

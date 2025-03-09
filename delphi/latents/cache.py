@@ -182,6 +182,7 @@ class LatentCache:
         batch_size: int,
         transcode: bool = False,
         filters: dict[str, Float[Tensor, "indices"]] | None = None,
+        log_path: Path | None = None,
     ):
         """
         Initialize the LatentCache.
@@ -190,7 +191,9 @@ class LatentCache:
             model: The model to cache latents for.
             hookpoint_to_sparse_encode: Dictionary of sparse encoding functions.
             batch_size: Size of batches for processing.
+            transcode: Whether to transcode the model outputs.
             filters: Filters for selecting specific latents.
+            log_path: Path to save logging output. Defaults to None, which uses a default path.
         """
         self.model = model
         self.hookpoint_to_sparse_encode = hookpoint_to_sparse_encode
@@ -199,6 +202,7 @@ class LatentCache:
         self.width = None
         self.cache = Cache(filters, batch_size=batch_size)
         self.hookpoint_firing_counts: dict[str, Tensor] = {}
+        self.log_path = log_path
         if filters is not None:
             self.filter_submodules(filters)
 
@@ -235,10 +239,10 @@ class LatentCache:
             filters: Filters for selecting specific latents.
         """
         filtered_submodules = {}
-        for hookpoint in self.hookpoint_to_sae.keys():
+        for hookpoint in self.hookpoint_to_sparse_encode.keys():
             if hookpoint in filters:
-                filtered_submodules[hookpoint] = self.hookpoint_to_sae[hookpoint]
-        self.hookpoint_to_sae = filtered_submodules
+                filtered_submodules[hookpoint] = self.hookpoint_to_sparse_encode[hookpoint]
+        self.hookpoint_to_sparse_encode = filtered_submodules
 
     def run(self, n_tokens: int, tokens: token_tensor_shape):
         """
@@ -401,6 +405,10 @@ class LatentCache:
         """
         Save the firing counts for the cached latents.
         """
-        log_path = Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt"
+        if self.log_path is None:
+            log_path = Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt"
+        else:
+            log_path = self.log_path / "hookpoint_firing_counts.pt"
+        
         log_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(self.hookpoint_firing_counts, log_path)

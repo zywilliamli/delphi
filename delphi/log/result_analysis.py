@@ -268,7 +268,8 @@ def plot_line(df: pd.DataFrame, visualize_path: Path):
 
 def log_results(scores_path: Path, visualize_path: Path, target_modules: list[str]):
     hookpoint_firing_counts: dict[str, Tensor] = torch.load(
-        Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt"
+        Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt",
+        weights_only=True
     )
     df = build_scores_df(scores_path, target_modules, hookpoint_firing_counts)
 

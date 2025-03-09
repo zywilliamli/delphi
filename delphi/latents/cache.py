@@ -241,7 +241,9 @@ class LatentCache:
         filtered_submodules = {}
         for hookpoint in self.hookpoint_to_sparse_encode.keys():
             if hookpoint in filters:
-                filtered_submodules[hookpoint] = self.hookpoint_to_sparse_encode[hookpoint]
+                filtered_submodules[hookpoint] = self.hookpoint_to_sparse_encode[
+                    hookpoint
+                ]
         self.hookpoint_to_sparse_encode = filtered_submodules
 
     def run(self, n_tokens: int, tokens: token_tensor_shape):
@@ -409,6 +411,6 @@ class LatentCache:
             log_path = Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt"
         else:
             log_path = self.log_path / "hookpoint_firing_counts.pt"
-        
+
         log_path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(self.hookpoint_firing_counts, log_path)

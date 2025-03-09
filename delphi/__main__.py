@@ -240,11 +240,11 @@ def populate_cache(
     Populates an on-disk cache in `latents_path` with SAE latent activations.
     """
     latents_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Create a log path within the run directory
     log_path = latents_path.parent / "log"
     log_path.mkdir(parents=True, exist_ok=True)
-    
+
     cache_cfg = run_cfg.cache_cfg
     tokens = load_tokenized_data(
         cache_cfg.cache_ctx_len,
@@ -276,7 +276,7 @@ def populate_cache(
         log_path=log_path,
     )
     cache.run(cache_cfg.n_tokens, tokens)
-    
+
     # Save firing counts to the run-specific log directory
     cache.save_firing_counts()
 

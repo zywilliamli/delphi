@@ -97,8 +97,7 @@ def cache_setup(tmp_path_factory, mock_dataset: torch.Tensor, model: PreTrainedM
 
     cache.save_config(temp_dir, cache_cfg, "EleutherAI/pythia-70m")
     hookpoint_firing_counts = torch.load(
-        Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt",
-        weights_only=True
+        Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt", weights_only=True
     )
     return {
         "cache": cache,

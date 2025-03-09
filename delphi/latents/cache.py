@@ -193,7 +193,7 @@ class LatentCache:
             batch_size: Size of batches for processing.
             transcode: Whether to transcode the model outputs.
             filters: Filters for selecting specific latents.
-            log_path: Path to save logging output. Defaults to None, which uses a default path.
+            log_path: Path to save logging output.
         """
         self.model = model
         self.hookpoint_to_sparse_encode = hookpoint_to_sparse_encode

@@ -105,7 +105,7 @@ def cache_setup(tmp_path_factory, mock_dataset: torch.Tensor, model: PreTrainedM
         "tokens": tokens,
         "cache_cfg": cache_cfg,
         "temp_dir": temp_dir,
-        "hookpoint_firing_counts": hookpoint_firing_counts,
+        "firing_counts": hookpoint_firing_counts,
     }
 
 
@@ -143,7 +143,6 @@ def test_hookpoint_firing_counts_persistence(cache_setup):
     """
     cache = cache_setup["cache"]
     firing_counts_path = Path.cwd() / "results" / "log" / "hookpoint_firing_counts.pt"
-
     cache.save_firing_counts()
 
     assert firing_counts_path.exists(), "Firing counts file should exist after saving"

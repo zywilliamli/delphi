@@ -53,7 +53,6 @@ def latent_balanced_score_metrics(
         print(f"F1 Score: {metrics['f1_score']:.3f}")
         print(f"Precision: {metrics['precision']:.3f}")
         print(f"Recall: {metrics['recall']:.3f}")
-        # print(f"Dead Feature Count: {(df['hookpoint_firing_counts'] == 0).sum()}")
 
         fractions_failed = [
             failed_count / (total_examples + failed_count)
@@ -211,7 +210,7 @@ def build_scores_df(
             "file_name",
             "score_type",
             "latent_idx",
-            "hookpoint_firing_counts",
+            "firing_counts",
             "module",
         ]
         + metrics_cols
@@ -237,7 +236,7 @@ def build_scores_df(
                 df_data["file_name"].append(score_file.stem)
                 df_data["score_type"].append(score_type)
                 df_data["latent_idx"].append(latent_idx)
-                df_data["hookpoint_firing_counts"].append(
+                df_data["firing_counts"].append(
                     hookpoint_firing_counts[module][latent_idx].item()
                 )
                 df_data["module"].append(module)

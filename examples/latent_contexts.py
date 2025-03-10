@@ -1,8 +1,8 @@
 # %%
 import asyncio
 import concurrent.futures
+import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import ipywidgets as widgets
@@ -12,11 +12,8 @@ from IPython.display import HTML, clear_output, display
 from delphi.config import ConstructorConfig, SamplerConfig
 from delphi.latents import LatentDataset
 
-try:
-    import ipywidgets
-except ImportError:
-    print("ipywidgets not installed. " "Run `pip install ipywidgets`", file=sys.stderr)
-    raise
+if importlib.util.find_spec("ipywidgets") is None:
+    raise ImportError("ipywidgets not installed. " "Run `pip install ipywidgets`")
 
 
 def top_level_await(fn):
@@ -44,9 +41,16 @@ def make_colorbar(
             ratio = i / (num_colors)
             value = round((min_value * ratio), 1)
             text_color = "255,255,255" if ratio > 0.5 else "0,0,0"
-            colorbar += f'<span style="background-color:rgba(255, {int(red_blue_ness-(red_blue_ness*ratio))},{int(red_blue_ness-(red_blue_ness*ratio))},1); color:rgb({text_color})">&nbsp{value}&nbsp</span>'  # noqa: E501
+            colorbar += (
+                '<span style="background-color:rgba(255, '
+                f"{int(red_blue_ness-(red_blue_ness*ratio))},{int(red_blue_ness-(red_blue_ness*ratio))}"
+                f',1); color:rgb({text_color})">&nbsp{value}&nbsp</span>'
+            )  # noqa: E501
     # Do zero
-    colorbar += f'<span style="background-color:rgba({white},{white},{white},1);color:rgb(0,0,0)">&nbsp0.0&nbsp</span>'  # noqa: E501
+    colorbar += (
+        f'<span style="background-color:rgba({white},{white},{white}'
+        f',1);color:rgb(0,0,0)">&nbsp0.0&nbsp</span>'
+    )  # noqa: E501
     # Do positive
     if max_value > positive_threshold:
         for i in range(1, num_colors + 1):
@@ -151,7 +155,8 @@ def tokens_and_activations_to_html(
                 highlighted_text.append('<div style="display: inline-block;">')
             text_color, background_color = value_to_color(a, max_value, min_value)
             highlighted_text.append(
-                f'<span style="background-color:{background_color};margin-right: {text_spacing}; color:rgb({text_color})">{escape(t)}</span>'
+                f'<span style="background-color:{background_color};margin-right: '
+                f'{text_spacing}; color:rgb({text_color})">{escape(t)}</span>'
             )  # noqa: E501
             if logit_diffs is not None and model_type != "reward_model":
                 logit_diffs_act = logit_diffs[seq_ind][act_ind]
@@ -159,13 +164,17 @@ def tokens_and_activations_to_html(
                     logit_diffs_act, logit_max_value, logit_min_value
                 )
                 highlighted_text.append(
-                    f'<div style="display: block; margin-right: {text_spacing}; height: 10px; background-color:{logit_background_color}; text-align: center;"></div></div>'
+                    f'<div style="display: block; margin-right: {text_spacing}; height:'
+                    f" 10px; background-color:{logit_background_color}; text-align: "
+                    'center;"></div></div>'
                 )  # noqa: E501
         if logit_diffs is not None and model_type == "reward_model":
             reward_change = logit_diffs[seq_ind].item()
             text_color, background_color = value_to_color(reward_change, 10, -10)
             highlighted_text.append(
-                f'<br><span>Reward: </span><span style="background-color:{background_color};margin-right: {text_spacing}; color:rgb({text_color})">{reward_change:.2f}</span>'
+                '<br><span>Reward: </span><span style="background-color:'
+                f"{background_color};margin-right: {text_spacing}; "
+                f'color:rgb({text_color})">{reward_change:.2f}</span>'
             )  # noqa: E501
         highlighted_text.append('<div style="margin-top: 0.2em;"></div>')
     highlighted_text = "".join(highlighted_text)

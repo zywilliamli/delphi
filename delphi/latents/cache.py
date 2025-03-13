@@ -514,8 +514,8 @@ def generate_statistics_cache(
     single_token_fraction = maybe_single_token_features / num_alive
     strong_token_fraction = num_single_token_features / num_alive
     if verbose:
-        print(f"Fraction of weak token latents: {single_token_fraction:%}")
-        print(f"Fraction of strong token latents: {strong_token_fraction:%}")
+        print(f"Fraction of weak single token latents: {single_token_fraction:%}")
+        print(f"Fraction of strong single token latents: {strong_token_fraction:%}")
 
     return CacheStatistics(
         frac_alive=fraction_alive,
@@ -555,9 +555,10 @@ def check_single_feature(activation_group, token_group):
     _, unique_counts = torch.unique_consecutive(sampled_tokens, return_counts=True)
 
     max_count = unique_counts.max()
-    if max_count > 0.75 * num_samples:
+    other_maybe_single_token = max_count > 0.75 * num_samples
+    if other_maybe_single_token and maybe_single_token:
         return 0, 1
-    elif maybe_single_token:
+    elif maybe_single_token or other_maybe_single_token:
         return 1, 0
     else:
         return 0, 0

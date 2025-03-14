@@ -24,9 +24,9 @@ This command will:
 3. Score the explanations uses fuzzing and detection scorers.
 4. Log summary metrics including per-scorer F1 scores and confusion matrices, and produce histograms of the scorer classification accuracies.
 
-The pipeline is highly configurable and can also be called programmatically (see the [end-to-end test](https://github.com/EleutherAI/delphi/blob/main/delphi/tests/e2e.py) for an example).
+The pipeline is highly configurable and can also be called programmatically (see the [end-to-end test](https://github.com/EleutherAI/delphi/blob/main/delphi/tests/e2e.py) for an example). 
 
-To use other scorer types, instantiate a custom pipeline.
+To use other scorer types, instantiate a custom pipeline. You can take inspiration on the main pipeline in [delphi.__main__](https://github.com/EleutherAI/delphi/blob/main/delphi/__main__.py).
 
 ## Caching
 

@@ -116,6 +116,10 @@ class TensorBuffer:
 
 
 class LatentDataset:
+    """
+    Dataset which constructs TensorBuffers for each module and latent.
+    """
+
     def __init__(
         self,
         raw_dir: str,
@@ -126,10 +130,7 @@ class LatentDataset:
         latents: Optional[dict[str, torch.Tensor]] = None,
     ):
         """
-        Initialize a dataset which constructs TensorBuffers for each module and latent,
-        then creates a record for each latent on-the-fly containing relevant
-        examples and other information for explanation and scoring according to
-        the sampler config.
+        Initialize a LatentDataset.
 
         Args:
             raw_dir: Directory containing raw latent data.

@@ -17,7 +17,7 @@ async def test():
         batch_size=8,
         cache_ctx_len=256,
         n_splits=5,
-        n_tokens=10_000_000,
+        n_tokens=200_000,
     )
     sampler_cfg = SamplerConfig(
         train_type="quantiles",

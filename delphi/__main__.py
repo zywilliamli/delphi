@@ -27,11 +27,6 @@ from delphi.pipeline import Pipe, Pipeline, process_wrapper
 from delphi.scorers import DetectionScorer, FuzzingScorer
 from delphi.sparse_coders import load_hooks_sparse_coders, load_sparse_coders
 from delphi.utils import assert_type, load_tokenized_data
-from delphi.sparse_coders import load_sparse_coders
-from delphi.semantic_index.index import build_or_load_index, load_index
-from delphi.sparse_coders import load_hook_to_sparse_encode, load_sparse_coders
-from delphi.utils import assert_type
-
 
 def load_artifacts(run_cfg: RunConfig):
     if run_cfg.load_in_8bit:
@@ -53,7 +48,7 @@ def load_artifacts(run_cfg: RunConfig):
         token=run_cfg.hf_token,
     )
 
-    hookpoint_to_sparse_encode, transcode = load_hook_to_sparse_encode(
+    hookpoint_to_sparse_encode, transcode = load_hooks_sparse_coders(
         model,
         run_cfg,
         compile=True,
@@ -201,7 +196,7 @@ async def process_cache(
     def scorer_preprocess(result):
         if isinstance(result, list):
             result = result[0]
-
+            
         record = result.record
         record.explanation = result.explanation
         record.extra_examples = record.not_active
@@ -251,13 +246,11 @@ def populate_cache(
     model: PreTrainedModel,
     hookpoint_to_sparse_encode: dict[str, Callable],
     latents_path: Path,
-    base_path: Path,
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
     transcode: bool,
 ):
     """
     Populates an on-disk cache in `latents_path` with SAE latent activations.
-    Optionally builds a semantic index of token sequences.
     """
     latents_path.mkdir(parents=True, exist_ok=True)
 
@@ -266,28 +259,15 @@ def populate_cache(
     log_path.mkdir(parents=True, exist_ok=True)
 
     cache_cfg = run_cfg.cache_cfg
-
-    from datasets import load_dataset
-    from sparsify.data import chunk_and_tokenize
-
-    data = load_dataset(
-        cache_cfg.dataset_repo,
-        name=cache_cfg.dataset_name,
-        split=cache_cfg.dataset_split,
-    )
-    data = data.shuffle(run_cfg.seed)
-
-    # if run_cfg.constructor_cfg.non_activating_source == "FAISS":
-    # build_or_load_index(data, base_path, run_cfg.cache_cfg)
-
-    tokens_ds = chunk_and_tokenize(
-        data,  # type: ignore
+    tokens = load_tokenized_data(
+        cache_cfg.cache_ctx_len,
         tokenizer,
-        max_seq_len=cache_cfg.cache_ctx_len,
-        text_key=cache_cfg.dataset_column,
+        cache_cfg.dataset_repo,
+        cache_cfg.dataset_split,
+        cache_cfg.dataset_name,
+        cache_cfg.dataset_column,
+        run_cfg.seed,
     )
-
-    tokens = tokens_ds["input_ids"]
 
     if run_cfg.filter_bos:
         if tokenizer.bos_token_id is None:
@@ -325,8 +305,8 @@ def populate_cache(
     cache.save_config(save_dir=latents_path, cfg=cache_cfg, model_name=run_cfg.model)
 
 
-def filter_redundant_hookpoints(
-    hookpoint_list_or_dict: dict[str, Callable] | list[str],
+def non_redundant_hookpoints(
+    hookpoint_to_sparse_encode: dict[str, Callable] | list[str],
     results_path: Path,
     overwrite: bool,
 ) -> dict[str, Callable] | list[str]:
@@ -335,21 +315,22 @@ def filter_redundant_hookpoints(
     """
     if overwrite:
         print("Overwriting results from", results_path)
-        return hookpoint_list_or_dict
+        return hookpoint_to_sparse_encode
     in_results_path = [x.name for x in results_path.glob("*")]
-    if isinstance(hookpoint_list_or_dict, dict):
+    if isinstance(hookpoint_to_sparse_encode, dict):
         non_redundant_hookpoints = {
-            k: v for k, v in hookpoint_list_or_dict.items() if k not in in_results_path
+            k: v
+            for k, v in hookpoint_to_sparse_encode.items()
+            if k not in in_results_path
         }
     else:
         non_redundant_hookpoints = [
             hookpoint
-            for hookpoint in hookpoint_list_or_dict
+            for hookpoint in hookpoint_to_sparse_encode
             if hookpoint not in in_results_path
         ]
     if not non_redundant_hookpoints:
         print(f"Files found in {results_path}, skipping...")
-        return {} if isinstance(hookpoint_list_or_dict, dict) else []
     return non_redundant_hookpoints
 
 
@@ -375,54 +356,53 @@ async def run(
     hookpoints, hookpoint_to_sparse_encode, model, transcode = load_artifacts(run_cfg)
     tokenizer = AutoTokenizer.from_pretrained(run_cfg.model, token=run_cfg.hf_token)
 
-    non_redundant_hookpoints_to_fwd = assert_type(
+    nrh = assert_type(
         dict,
-        filter_redundant_hookpoints(
+        non_redundant_hookpoints(
             hookpoint_to_sparse_encode, latents_path, "cache" in run_cfg.overwrite
         ),
     )
-    if non_redundant_hookpoints_to_fwd:
+    if nrh:
         populate_cache(
             run_cfg,
             model,
-            non_redundant_hookpoints_to_fwd,
+            nrh,
             latents_path,
-            base_path,
             tokenizer,
             transcode,
         )
 
     del model, hookpoint_to_sparse_encode
     if run_cfg.constructor_cfg.non_activating_source == "neighbours":
-        non_redundant_hookpoints = assert_type(
-            list[str],
-            filter_redundant_hookpoints(
+        nrh = assert_type(
+            list,
+            non_redundant_hookpoints(
                 hookpoints, neighbours_path, "neighbours" in run_cfg.overwrite
             ),
         )
-        if non_redundant_hookpoints:
+        if nrh:
             create_neighbours(
                 run_cfg,
                 latents_path,
                 neighbours_path,
-                non_redundant_hookpoints,
+                nrh,
             )
     else:
         print("Skipping neighbour creation")
 
-    non_redundant_hookpoints = assert_type(
+    nrh = assert_type(
         list,
-        filter_redundant_hookpoints(
+        non_redundant_hookpoints(
             hookpoints, scores_path, "scores" in run_cfg.overwrite
         ),
     )
-    if non_redundant_hookpoints:
+    if nrh:
         await process_cache(
             run_cfg,
             latents_path,
             explanations_path,
             scores_path,
-            non_redundant_hookpoints,
+            nrh,
             tokenizer,
             latent_range,
         )

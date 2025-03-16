@@ -1,5 +1,7 @@
 from typing import Any, Type, TypeVar, cast
 
+from typing import Any, Type, TypeVar, cast
+
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
 

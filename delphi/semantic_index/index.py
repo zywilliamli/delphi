@@ -25,7 +25,7 @@ def get_neighbors(model, index, query: str, k: int = 1000):
 
 def get_index_path(base_path: Path, cfg: CacheConfig):
     pretty_repo_name = cfg.dataset_repo.replace("/", "_")
-    name = f"{pretty_repo_name}_{cfg.dataset_split}_{cfg.ctx_len}.faiss"
+    name = f"{pretty_repo_name}_{cfg.dataset_split}_{cfg.cache_ctx_len}.faiss"
     return base_path / name
 
 
@@ -85,7 +85,7 @@ def build_or_load_index(data: Dataset, base_path: Path, cfg: CacheConfig):
     if not index_path.exists():
         logger.info(
             f"Building semantic index for {cfg.dataset_repo} {cfg.dataset_split}"
-            "seq_len={cfg.ctx_len}..."
+            "seq_len={cfg.example_ctx_len}..."
         )
         index = build_semantic_index(data, cfg)
         save_index(index, base_path, cfg)

@@ -1,6 +1,5 @@
 from typing import Optional
 
-import faiss
 import torch
 from jaxtyping import Float
 from sentence_transformers import SentenceTransformer
@@ -238,6 +237,8 @@ def faiss_non_activation_windows(
         A list of non-activating examples that are semantically similar to
             activating examples
     """
+    import faiss
+
     torch.manual_seed(seed)
     if n_not_active == 0:
         return []

@@ -230,9 +230,13 @@ The experiments discussed in [the blog post](https://blog.eleuther.ai/autointerp
 
 ## Development
 
-Run unit tests:
+Run the linters and unit tests:
 
-```pytest .```
+```bash
+pip install pre-commit pytest
+pre-commit install
+pytest .
+```
 
 Run an end-to-end test:
 

@@ -28,6 +28,12 @@ class ConstructorConfig(Serializable):
     faiss_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     """Embedding model to use for FAISS index."""
 
+    faiss_embedding_cache_dir: str = ".embedding_cache"
+    """Directory to store cached embeddings for FAISS similarity search."""
+
+    faiss_embedding_cache_enabled: bool = True
+    """Whether to cache embeddings for FAISS similarity search."""
+
     example_ctx_len: int = 32
     """Length of each sampled example sequence. Longer sequences
     reduce detection scoring performance in weak models.

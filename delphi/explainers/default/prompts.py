@@ -48,8 +48,6 @@ You will be given a list of text examples on which special words are selected an
 - Do not mention the marker tokens (<< >>) in your explanation.
 - Do not make lists of possible explanations. Keep your explanations short and concise.
 - The last line of your response must be the formatted explanation, using [EXPLANATION]:
-
-{prompt}
 """
 
 

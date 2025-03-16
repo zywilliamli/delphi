@@ -326,7 +326,7 @@ def filter_redundant_hookpoints(
         ]
     if not non_redundant_hookpoints:
         print(f"Files found in {results_path}, skipping...")
-        return None
+        return {} if isinstance(hookpoint_list_or_dict, dict) else []
     return non_redundant_hookpoints
 
 

@@ -97,13 +97,12 @@ class ContrastiveExplainer(Explainer):
 
         # Process activating examples
         if activating_examples:
-            highlighted_examples.append("EXAMPLES:")
+            highlighted_examples.append("ACTIVATING EXAMPLES:")
             for i, example in enumerate(activating_examples, 1):
                 str_toks = example.str_tokens
                 activations = example.activations.tolist()
-                highlighted_examples.append(
-                    f"Example {i}:  {self._highlight(str_toks, activations)}"
-                )
+                ex = self._highlight(str_toks, activations).strip().replace("\n", "")
+                highlighted_examples.append(f"Example {i}:  {ex}")
 
                 if self.activations and example.normalized_activations is not None:
                     normalized_activations = example.normalized_activations.tolist()
@@ -115,15 +114,14 @@ class ContrastiveExplainer(Explainer):
 
         # Process non-activating examples
         if non_activating_examples:
-            highlighted_examples.append("\nCOUNTEREXAMPLES:")
+            highlighted_examples.append("\nNON-ACTIVATING EXAMPLES:")
             for i, example in enumerate(non_activating_examples, 1):
                 str_toks = example.str_tokens
                 activations = example.activations.tolist()
                 # Note: For non-activating examples, the _highlight method won't
                 # highlight anything since activation values will be below threshold
-                highlighted_examples.append(
-                    f"Example {i}:  {self._highlight(str_toks, activations)}"
-                )
+                ex = self._highlight(str_toks, activations).strip().replace("\n", "")
+                highlighted_examples.append(f"Example {i}:  {ex}")
 
         # Join all sections into a single string
         highlighted_examples_str = "\n".join(highlighted_examples)
@@ -132,11 +130,11 @@ class ContrastiveExplainer(Explainer):
         return [
             {
                 "role": "system",
-                "content": SYSTEM_CONTRASTIVE.format(prompt=""),
+                "content": SYSTEM_CONTRASTIVE,
             },
             {
                 "role": "user",
-                "content": f"WORDS: {highlighted_examples_str}",
+                "content": highlighted_examples_str,
             },
         ]
 

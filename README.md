@@ -230,7 +230,7 @@ The experiments discussed in [the blog post](https://blog.eleuther.ai/autointerp
 
 ## Development
 
-Run the linters and unit tests:
+Set up the pre-commit lint and run the unit tests:
 
 ```bash
 pip install pre-commit pytest

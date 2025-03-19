@@ -128,6 +128,7 @@ def tokens_and_activations_to_html(
     ]
     print(len(activations))
     print(len(toks))
+
     highlighted_text = []
     highlighted_text.append(
         """
@@ -160,7 +161,7 @@ def tokens_and_activations_to_html(
             if logit_diffs is not None and model_type != "reward_model":
                 logit_diffs_act = logit_diffs[seq_ind][act_ind]
                 _, logit_background_color = value_to_color(
-                    logit_diffs_act, logit_max_value, logit_min_value # type: ignore
+                    logit_diffs_act, logit_max_value, logit_min_value  # type: ignore
                 )
                 highlighted_text.append(
                     f'<div style="display: block; margin-right: {text_spacing}; height:'

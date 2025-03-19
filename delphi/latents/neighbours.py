@@ -94,7 +94,7 @@ class NeighbourCalculator:
             assert isinstance(
                 self.autoencoder, Sae
             ), "Autoencoder must be a sparsify.Sae for decoder similarity"
-            decoder = self.autoencoder.W_dec.data.cuda()  # type: ignore
+            decoder = self.autoencoder.W_dec.data.cuda() #type:ignore
             weight_matrix_normalized = decoder / decoder.norm(dim=1, keepdim=True)
         else:
             raise ValueError(f"Unknown method: {method}. Use 'encoder' or 'decoder'")

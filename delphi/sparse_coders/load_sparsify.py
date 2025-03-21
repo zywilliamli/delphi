@@ -10,9 +10,10 @@ from transformers import PreTrainedModel
 
 def sae_dense_latents(x: Tensor, sae: SparseCoder) -> Tensor:
     """Run `sae` on `x`, yielding the dense activations."""
-    pre_acts = sae.pre_acts(x)
-    acts, indices = sae.select_topk(pre_acts)
-    return torch.zeros_like(pre_acts).scatter_(-1, indices, acts)
+    encoded = sae.encode(x)
+
+    buf = x.new_zeros([len(x), sae.num_latents])
+    return buf.scatter_(-1, encoded.top_indices, encoded.top_indices)
 
 
 def resolve_path(

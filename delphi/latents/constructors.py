@@ -1,6 +1,5 @@
 import hashlib
 import os
-from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
@@ -20,15 +19,15 @@ from .latents import (
     NonActivatingExample,
 )
 
-model = defaultdict(lambda: None)
+model_cache: dict[tuple[str, str], SentenceTransformer] = {}
 
 
 def get_model(name: str, device: str = "cuda") -> SentenceTransformer:
-    global model
-    if model[(name, device)] is None:
+    global model_cache
+    if (name, device) not in model_cache:
         print(f"Loading model {name} on device {device}")
-        model[(name, device)] = SentenceTransformer(name, device=device)
-    return model[(name, device)]
+        model_cache[(name, device)] = SentenceTransformer(name, device=device)
+    return model_cache[(name, device)]
 
 
 def prepare_non_activating_examples(
@@ -219,6 +218,8 @@ def constructor(
             cache_enabled=constructor_cfg.faiss_embedding_cache_enabled,
             cache_dir=constructor_cfg.faiss_embedding_cache_dir,
         )
+    else:
+        raise ValueError(f"Invalid non-activating source: {source_non_activating}")
     record.not_active = non_activating_examples
     return record
 
@@ -309,9 +310,9 @@ def faiss_non_activation_windows(
     non_activating_tokens = reshaped_tokens[available_indices]
 
     # Define cache directory structure
-    cache_dir = Path(os.environ.get("DELPHI_CACHE_DIR", cache_dir))
+    cache_dir = os.environ.get("DELPHI_CACHE_DIR", cache_dir)
     embedding_model_name = embedding_model.split("/")[-1]
-    cache_path = cache_dir / embedding_model_name
+    cache_path = Path(cache_dir) / embedding_model_name
 
     # Get activating example texts
     activating_texts = [
@@ -362,7 +363,7 @@ def faiss_non_activation_windows(
         dim = non_activating_embeddings.shape[1]
         index = faiss.IndexFlatL2(dim)
 
-        index.add(non_activating_embeddings)
+        index.add(non_activating_embeddings)  # type: ignore
         if cache_enabled:
             os.makedirs(cache_path, exist_ok=True)
             faiss.write_index(index, str(non_activating_cache_file))
@@ -398,7 +399,7 @@ def faiss_non_activation_windows(
             break
 
         # Search for similar non-activating examples
-        distances, indices = index.search(embedding.reshape(1, -1), n_not_active)
+        distances, indices = index.search(embedding.reshape(1, -1), n_not_active)  # type: ignore
 
         # Add new indices that haven't been collected yet
         for idx in indices[0]:
@@ -409,17 +410,6 @@ def faiss_non_activation_windows(
                 hard_negative_indices.append(idx)
                 collected_indices.add(idx)
 
-    # If we don't have enough hard negatives, add some random ones
-    if len(hard_negative_indices) < n_not_active:
-        remaining = n_not_active - len(hard_negative_indices)
-        available_indices_set = (
-            set(range(len(non_activating_embeddings))) - collected_indices
-        )
-        if available_indices_set:
-            random_indices = torch.tensor(list(available_indices_set))[
-                torch.randperm(len(available_indices_set))[:remaining]
-            ]
-            hard_negative_indices.extend(random_indices.tolist())
     # Get the token windows for the selected hard negatives
     selected_tokens = non_activating_tokens[hard_negative_indices]
     # Create non-activating examples

@@ -48,8 +48,6 @@ class ContrastiveExplainer(Explainer):
 
         # Build the prompt with both types of examples
         messages = self._build_prompt(combined_examples)
-        print("message", messages[-1]["content"])
-
         # Generate the explanation
         response = await self.client.generate(
             messages, temperature=self.temperature, **self.generation_kwargs
@@ -73,7 +71,7 @@ class ContrastiveExplainer(Explainer):
                 record=record, explanation="Explanation could not be parsed."
             )
 
-    def _build_prompt(
+    def _build_prompt(  # type: ignore
         self, examples: list[ActivatingExample | NonActivatingExample]
     ) -> list[dict]:
         """
